@@ -1,0 +1,1 @@
+"""AICompanyOS core package."""
