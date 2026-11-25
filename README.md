@@ -28,6 +28,20 @@ python cli.py backup
 python cli.py serve          # JSON API on http://127.0.0.1:8000
 ```
 
+## Agents
+
+Rule-based agents that run offline and cost nothing (`core/agents.py`):
+
+| Agent | What it does |
+|---|---|
+| classifier | `found` → `classified` with a category, or `rejected` if the task contains blocked content |
+| manager | `classified` → `assigned` to the executor, waiting for the human supervisor |
+| accountant | records income for `done` tasks, once per task (run it after confirming payment) |
+
+Run them from the **الوكلاء** page, or with `python cli.py run-agents` and `python cli.py run-accountant`.
+Every action is saved in the activity log. The keyword rules are a starting point, not a legal
+filter: the human supervisor decides what is accepted and executed.
+
 ## Task lifecycle
 
 `found` → `classified` → `assigned` → `in_progress` → `done` (or `rejected`)

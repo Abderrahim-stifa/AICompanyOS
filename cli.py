@@ -19,6 +19,7 @@ import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from core import agents as agents_mod
 from core import backup as backup_mod
 from core.logs import get_logger
 from core.service import Company
@@ -165,6 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--note", default="")
 
     sub.add_parser("agents", help="list agents")
+    sub.add_parser("run-agents", help="run classifier and manager over new tasks")
+    sub.add_parser("run-accountant", help="record income for completed tasks")
     sub.add_parser("summary", help="accounting and task summary")
     sub.add_parser("backup", help="create a database backup")
 
@@ -203,6 +206,10 @@ def main(argv=None) -> int:
             }))
         elif args.cmd == "agents":
             show(company.db.list_agents())
+        elif args.cmd == "run-agents":
+            show(agents_mod.run_pipeline(company.db))
+        elif args.cmd == "run-accountant":
+            show(agents_mod.run_accountant(company.db))
         elif args.cmd == "summary":
             show(company.db.summary())
         elif args.cmd == "backup":

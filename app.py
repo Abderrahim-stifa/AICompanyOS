@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from core import agents as agents_mod
 from core import backup as backup_mod
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
@@ -116,6 +117,26 @@ def page_agents(company: Company) -> None:
         st.success(f"{ar(AGENT_AR, agent['name'])} — {agent['specialty']} "
                    f"(مهام نشطة: {active}، الإجمالي: {len(mine)})")
 
+    st.subheader("تشغيل الوكلاء")
+    st.caption("المصنِّف يصنّف المهام الجديدة ويرفض المحظور منها، والمدير يسندها للمنفِّذ. "
+               "المحاسب يسجّل دخلاً للمهام المكتملة مرة واحدة لكل مهمة، فشغّله بعد التأكد من استلام المبلغ.")
+    col1, col2 = st.columns(2)
+    results = None
+    if col1.button("▶️ تشغيل المصنِّف والمدير"):
+        results = agents_mod.run_pipeline(company.db)
+    if col2.button("💰 تشغيل المحاسب"):
+        results = agents_mod.run_accountant(company.db)
+    if results is not None:
+        if results:
+            st.success(f"تم تنفيذ {len(results)} إجراء")
+        else:
+            st.info("لا يوجد شيء للتنفيذ الآن.")
+
+    st.subheader("سجل النشاط")
+    table(company.db.list_activity(),
+          {"created_at": "الوقت", "agent": "الوكيل", "action": "الإجراء", "task_id": "رقم المهمة"},
+          {"agent": AGENT_AR})
+
 
 def page_clients(company: Company) -> None:
     st.header("👥 العملاء")
@@ -137,6 +158,22 @@ def page_clients(company: Company) -> None:
 
     clients = company.db.list_clients()
     if clients:
+        with st.expander("تعديل عميل"):
+            options = {f"{c['id']} — {c['name']}": c for c in clients}
+            choice = st.selectbox("اختر العميل", list(options), key="edit_client")
+            current = options[choice]
+            cid = current["id"]
+            new_name = st.text_input("الاسم", value=current["name"], key=f"ec_name_{cid}")
+            new_email = st.text_input("البريد الإلكتروني (اختياري)", value=current["email"], key=f"ec_email_{cid}")
+            new_phone = st.text_input("الهاتف (اختياري)", value=current["phone"], key=f"ec_phone_{cid}")
+            if st.button("حفظ التعديل", key="edit_client_btn"):
+                try:
+                    company.update_client(cid, {"name": new_name, "email": new_email, "phone": new_phone})
+                    st.success("تم تعديل العميل")
+                    st.rerun()
+                except (ValidationError, LookupError) as exc:
+                    fail(exc)
+
         with st.expander("حذف عميل"):
             options = {f"{c['id']} — {c['name']}": c["id"] for c in clients}
             choice = st.selectbox("اختر العميل", list(options), key="del_client")
@@ -154,7 +191,7 @@ def page_projects(company: Company) -> None:
           {"status": PROJECT_AR})
 
     clients = company.db.list_clients()
-    client_options = {"— بدون عميل —": None, **{c["name"]: c["id"] for c in clients}}
+    client_options = {"— بدون عميل —": None, **{f"{c['id']} — {c['name']}": c["id"] for c in clients}}
     with st.form("add_project", clear_on_submit=True):
         st.subheader("إضافة مشروع")
         name = st.text_input("اسم المشروع")
@@ -174,6 +211,32 @@ def page_projects(company: Company) -> None:
 
     projects = company.db.list_projects()
     if projects:
+        with st.expander("تعديل مشروع"):
+            options = {f"{p['id']} — {p['name']}": p for p in projects}
+            choice = st.selectbox("اختر المشروع", list(options), key="full_edit_project")
+            current = options[choice]
+            pid = current["id"]
+            new_name = st.text_input("اسم المشروع", value=current["name"], key=f"ep_name_{pid}")
+            client_keys = list(client_options)
+            current_client = next((k for k, v in client_options.items() if v == current["client_id"]),
+                                  client_keys[0])
+            new_client = st.selectbox("العميل", client_keys, index=client_keys.index(current_client),
+                                      key=f"ep_client_{pid}")
+            new_status = st.selectbox("الحالة", PROJECT_STATUSES, index=PROJECT_STATUSES.index(current["status"]),
+                                      format_func=lambda v: ar(PROJECT_AR, v), key=f"ep_status_{pid}")
+            new_budget = st.number_input("الميزانية", min_value=0.0, step=10.0,
+                                         value=float(current["budget"]), key=f"ep_budget_{pid}")
+            if st.button("حفظ تعديل المشروع", key="full_edit_project_btn"):
+                try:
+                    company.update_project(pid, {
+                        "name": new_name, "client_id": client_options[new_client], "status": new_status,
+                        "budget": new_budget, "currency": current["currency"],
+                    })
+                    st.success("تم تعديل المشروع")
+                    st.rerun()
+                except (ValidationError, LookupError) as exc:
+                    fail(exc)
+
         with st.expander("تغيير حالة أو حذف مشروع"):
             options = {f"{p['id']} — {p['name']}": p["id"] for p in projects}
             choice = st.selectbox("اختر المشروع", list(options), key="edit_project")

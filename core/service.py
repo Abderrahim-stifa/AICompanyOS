@@ -55,12 +55,21 @@ class Company:
     def add_client(self, data: dict) -> dict:
         return self.db.add_client(validate_client(data))
 
+    def update_client(self, client_id, data: dict) -> dict:
+        return self.db.update_client(clean_id(client_id, "client id"), validate_client(data))
+
     def delete_client(self, client_id) -> None:
         self.db.delete_client(clean_id(client_id, "client id"))
 
     # projects
     def add_project(self, data: dict) -> dict:
         return self.db.add_project(validate_project(data, self.settings.default_currency))
+
+    def update_project(self, project_id, data: dict) -> dict:
+        return self.db.update_project(
+            clean_id(project_id, "project id"),
+            validate_project(data, self.settings.default_currency),
+        )
 
     def set_project_status(self, project_id, status) -> None:
         self.db.set_project_status(

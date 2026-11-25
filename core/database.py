@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS activity (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent       TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    task_id     INTEGER,
+    created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id);
 """
@@ -179,6 +187,18 @@ class Database:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM clients ORDER BY id DESC")]
 
+    def update_client(self, client_id: int, client: dict) -> dict:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE clients SET name = :name, email = :email, phone = :phone WHERE id = :id",
+                {**client, "id": client_id},
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"client #{client_id} not found")
+            row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        log.info("client #%s updated", client_id)
+        return dict(row)
+
     def delete_client(self, client_id: int) -> None:
         with self.connect() as conn:
             cur = conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
@@ -212,6 +232,22 @@ class Database:
         query += " ORDER BY p.id DESC"
         with self.connect() as conn:
             return [dict(r) for r in conn.execute(query, params)]
+
+    def update_project(self, project_id: int, project: dict) -> dict:
+        if project.get("client_id") is not None:
+            with self.connect() as conn:
+                if conn.execute("SELECT 1 FROM clients WHERE id = ?", (project["client_id"],)).fetchone() is None:
+                    raise LookupError(f"client #{project['client_id']} not found")
+        with self.connect() as conn:
+            cur = conn.execute(
+                """UPDATE projects SET name = :name, client_id = :client_id, status = :status,
+                          budget = :budget, currency = :currency WHERE id = :id""",
+                {**project, "id": project_id},
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"project #{project_id} not found")
+        log.info("project #%s updated", project_id)
+        return self.list_projects(project_id)[0]
 
     def set_project_status(self, project_id: int, status: str) -> None:
         with self.connect() as conn:
@@ -252,6 +288,28 @@ class Database:
                                   "category": "", "price": price, "currency": "USD"})
             self.update_task(task["id"], status=status, agent=agent)
         return True
+
+    # ---- activity log ----
+    def add_activity(self, agent: str, action: str, task_id: int | None = None) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (agent, action, task_id, _now()),
+            )
+
+    def list_activity(self, limit: int = 50) -> list[dict]:
+        with self.connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM activity ORDER BY id DESC LIMIT ?", (limit,))]
+
+    def tasks_missing_income(self) -> list[dict]:
+        """Completed tasks with a price that have no income entry in the ledger yet."""
+        with self.connect() as conn:
+            return [dict(r) for r in conn.execute(
+                """SELECT t.* FROM tasks t
+                   WHERE t.status = 'done' AND t.price > 0
+                     AND NOT EXISTS (SELECT 1 FROM ledger l WHERE l.task_id = t.id AND l.kind = 'income')
+                   ORDER BY t.id""")]
 
     # ---- agents ----
     def list_agents(self) -> list[dict]:
