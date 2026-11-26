@@ -73,10 +73,16 @@ class Company:
     def delete_task(self, task_id, user_name: str = "Admin") -> None:
         self.db.delete_task(clean_id(task_id, "task id"), user_name=user_name)
 
-    def assign_role_agent(self, task_id, agent_key: str) -> dict:
+    def assign_role_agent(self, task_id, agent_key: str, user_name: str = "Admin") -> dict:
         task_id = clean_id(task_id, "task id")
         agent_key = clean_text(agent_key, "agent key", max_len=80)
-        return self.db.assign_role_agent(task_id, agent_key)
+        user_name = clean_text(user_name, "user_name", max_len=100)
+        return self.db.assign_role_agent(task_id, agent_key, user_name=user_name)
+
+    def unassign_role_agent(self, task_id, user_name: str = "Admin") -> dict:
+        task_id = clean_id(task_id, "task id")
+        user_name = clean_text(user_name, "user_name", max_len=100)
+        return self.db.unassign_role_agent(task_id, user_name=user_name)
 
     def set_task_status(self, task_id, status: str) -> dict:
         task_id = clean_id(task_id, "task id")
