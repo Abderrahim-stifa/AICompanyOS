@@ -4,6 +4,7 @@ Run:  python -m streamlit run app.py
 """
 from __future__ import annotations
 
+import html
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -439,7 +440,7 @@ def page_settings(company: Company) -> None:
         language = st.selectbox(
             "لغة التفضيل",
             ["ar", "en"],
-            index=["ar", "en"].index(preferences["language"]),
+            index=["ar", "en"].index(preferences["language"] if preferences["language"] in {"ar", "en"} else "ar"),
             format_func=lambda value: "العربية" if value == "ar" else "English",
             help="حالياً محتوى الواجهة بالعربية؛ اختيار English يُحفظ كتفضيل تمهيداً لإضافة الترجمة.",
         )
@@ -497,6 +498,7 @@ def main() -> None:
     if not preferences["dark_mode"]:
         st.markdown("""
         <style>
+        :root {color-scheme:light !important;}
         .stApp {background:#f4f6fb !important;color:#172033 !important;}
         h1,h2,h3,p,label,[data-testid="stMarkdownContainer"] {color:#172033 !important;}
         [data-testid="stSidebar"] {background:#e8edf6 !important;}
@@ -515,7 +517,7 @@ def main() -> None:
       </svg>
       <div><div class="brand-name">{__COMPANY_NAME__}</div><div class="brand-tagline">AI Business Operating System · v{APP_VERSION}</div></div>
     </div><div class="brand-accent"></div>
-    """.replace("{__COMPANY_NAME__}", __import__("html").escape(preferences["company_name"])).replace("{APP_VERSION}", APP_VERSION), unsafe_allow_html=True)
+    """.replace("{__COMPANY_NAME__}", html.escape(preferences["company_name"])).replace("{APP_VERSION}", APP_VERSION), unsafe_allow_html=True)
     page = st.sidebar.radio("القائمة", list(PAGES))
     PAGES[page](company)
 
