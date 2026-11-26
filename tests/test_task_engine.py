@@ -47,13 +47,19 @@ class RoleAgentTaskEngineTests(unittest.TestCase):
         self.assertEqual(updated["agent"], "executor")
 
     def test_assign_role_agent_records_assignment_and_activity(self):
-        assigned = self.db.assign_role_agent(self.task["id"], "engineer")
+        assigned = self.db.assign_role_agent(self.task["id"], "engineer", user_name="Operator")
         self.assertEqual(assigned["role_agent_key"], "engineer")
         self.assertEqual(assigned["status"], "assigned")
         self.assertIsNotNone(assigned["assigned_at"])
         activity = self.db.list_activity()
         self.assertEqual(activity[0]["agent"], "engineer")
         self.assertEqual(activity[0]["task_id"], self.task["id"])
+        audit = self.db.list_system_logs()[0]
+        self.assertEqual((audit["action"], audit["entity_type"], audit["entity_id"], audit["user_name"]),
+                         ("ASSIGN", "TASK", self.task["id"], "Operator"))
+        unassigned = self.db.unassign_role_agent(self.task["id"], user_name="Operator")
+        self.assertIsNone(unassigned["role_agent_key"])
+        self.assertEqual(self.db.list_system_logs()[0]["action"], "UNASSIGN")
 
     def test_unknown_role_agent_is_rejected(self):
         with self.assertRaises(LookupError):
