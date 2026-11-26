@@ -125,10 +125,10 @@ def list_role_agents(db_path: str | None = None) -> list[dict]:
             SELECT r.agent_key, r.name, r.role,
                    CASE WHEN EXISTS (
                        SELECT 1 FROM tasks active_task
-                       WHERE active_task.agent = r.agent_key
+                       WHERE active_task.role_agent_key = r.agent_key
                          AND active_task.status IN ('assigned', 'in_progress')
                    ) THEN 'نشط' ELSE 'جاهز' END AS status,
-                   (SELECT COUNT(*) FROM tasks t WHERE t.agent = r.agent_key) AS tasks_count,
+                   (SELECT COUNT(*) FROM tasks t WHERE t.role_agent_key = r.agent_key) AS tasks_count,
                    (SELECT MAX(a.created_at) FROM activity a
                     WHERE a.agent = r.agent_key) AS last_activity
             FROM role_agents r
