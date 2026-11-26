@@ -59,6 +59,7 @@ jobs:
         run: |
           test -f core/__init__.py
           test -f core/agents.py
+          test -f core/ai_agents.py
           test -f core/database.py
           test -f core/settings.py
           test -f core/validator.py
@@ -69,8 +70,11 @@ jobs:
 
       - name: Validate Python Files
         run: |
-          python -m compileall -q app.py cli.py core
+          python -m compileall -q app.py cli.py core tests
           echo "Python syntax validation OK"
+
+      - name: Run Unit Tests
+        run: python -m unittest discover -s tests -v
 
       - name: Verify Installed Dependencies
         run: python -m pip check
