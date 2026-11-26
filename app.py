@@ -181,10 +181,10 @@ def page_role_agents(company: Company) -> None:
         with card_rows[index % 3]:
             last_activity = agent["last_activity"] or "لا يوجد نشاط مسجل"
             st.info(
-                f"**{agent['name']}**\\n\\n"
-                f"الدور: {agent['role']}\\n\\n"
-                f"الحالة: {agent['status']}\\n\\n"
-                f"عدد المهام: {agent['tasks_count']}\\n\\n"
+                f"**{agent['name']}**\n\n"
+                f"الدور: {agent['role']}\n\n"
+                f"الحالة: {agent['status']}\n\n"
+                f"عدد المهام: {agent['tasks_count']}\n\n"
                 f"آخر نشاط: {last_activity}"
             )
     overview = build_agent_overview(company.db.list_tasks())
@@ -515,7 +515,7 @@ def main() -> None:
       </svg>
       <div><div class="brand-name">{__COMPANY_NAME__}</div><div class="brand-tagline">AI Business Operating System · v{APP_VERSION}</div></div>
     </div><div class="brand-accent"></div>
-    """.replace("{__COMPANY_NAME__}", __import__("html").escape(preferences["company_name"])), unsafe_allow_html=True)
+    """.replace("{__COMPANY_NAME__}", __import__("html").escape(preferences["company_name"])).replace("{APP_VERSION}", APP_VERSION), unsafe_allow_html=True)
     page = st.sidebar.radio("القائمة", list(PAGES))
     PAGES[page](company)
 
