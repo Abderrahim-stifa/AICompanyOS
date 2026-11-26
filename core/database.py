@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
     role_agent_key TEXT,
+    priority    TEXT NOT NULL DEFAULT 'normal',
     result      TEXT,
     assigned_at TEXT,
     completed_at TEXT
@@ -73,6 +74,13 @@ CREATE TABLE IF NOT EXISTS activity (
     created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    action      TEXT NOT NULL,
+    details     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id);
 """
@@ -117,12 +125,16 @@ class Database:
             task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
             for column, declaration in (
                 ("role_agent_key", "TEXT"),
+                ("priority", "TEXT NOT NULL DEFAULT 'normal'"),
                 ("result", "TEXT"),
                 ("assigned_at", "TEXT"),
                 ("completed_at", "TEXT"),
             ):
                 if column not in task_columns:
                     conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {declaration}")
+            log_columns = {row["name"] for row in conn.execute("PRAGMA table_info(activity_logs)")}
+            if "details" not in log_columns:
+                conn.execute("ALTER TABLE activity_logs ADD COLUMN details TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
@@ -136,11 +148,12 @@ class Database:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO tasks
-                   (title, description, source, category, price, currency, status, created_at, updated_at)
-                   VALUES (:title, :description, :source, :category, :price, :currency, 'found', :now, :now)""",
+                   (title, description, source, category, price, currency, status, priority, created_at, updated_at)
+                   VALUES (:title, :description, :source, :category, :price, :currency, 'found', :priority, :now, :now)""",
                 {**task, "now": now},
             )
             task_id = cur.lastrowid
+        self.add_system_log("CREATE_TASK", task["title"])
         log.info("task #%s added: %s", task_id, task["title"])
         return self.get_task(task_id)
 
@@ -233,10 +246,22 @@ class Database:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute(query, params)]
 
-    def update_task(self, task_id: int, *, status: str | None = None,
-                    category: str | None = None, agent: str | None = None) -> dict:
+    def update_task(self, task_id: int, *, title: str | None = None, description: str | None = None,
+                    status: str | None = None, category: str | None = None,
+                    agent: str | None = None, priority: str | None = None) -> dict:
         self.get_task(task_id)  # raises LookupError if missing
         sets, params = ["updated_at = ?"], [_now()]
+        if title is not None:
+            sets.append("title = ?")
+            params.append(title)
+        if description is not None:
+            sets.append("description = ?")
+            params.append(description)
+        if priority is not None:
+            if priority not in {"low", "normal", "high", "urgent"}:
+                raise ValidationError("priority must be low, normal, high or urgent")
+            sets.append("priority = ?")
+            params.append(priority)
         if status is not None:
             if status not in TASK_STATUSES:
                 raise ValidationError(f"status must be one of: {', '.join(TASK_STATUSES)}")
@@ -251,14 +276,41 @@ class Database:
         params.append(task_id)
         with self.connect() as conn:
             conn.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?", params)
+        self.add_system_log("UPDATE_TASK", title or self.get_task(task_id)["title"])
         log.info("task #%s updated", task_id)
         return self.get_task(task_id)
 
     def delete_task(self, task_id: int) -> None:
-        self.get_task(task_id)
+        task = self.get_task(task_id)
+        self.add_system_log("DELETE_TASK", str(task_id) + ": " + task["title"])
         with self.connect() as conn:
             conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         log.info("task #%s deleted", task_id)
+
+    def get_tasks(self) -> list[dict]:
+        """Return tasks with the legacy pipeline agent display name."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT t.*, a.name AS agent_name
+                   FROM tasks t LEFT JOIN agents a ON t.agent = a.name
+                   ORDER BY t.id DESC"""
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def add_system_log(self, action: str, details: str = "") -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO activity_logs (action, details, created_at) VALUES (?, ?, ?)",
+                (action, details, _now()),
+            )
+
+    def list_system_logs(self, limit: int = 200) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, action, details, created_at FROM activity_logs ORDER BY id DESC LIMIT ?",
+                (max(1, min(int(limit), 1000)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     # ---- clients ----
     def add_client(self, client: dict) -> dict:
