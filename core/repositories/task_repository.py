@@ -3,9 +3,10 @@
 Database owns the transaction boundary and writes audit events atomically with
 CRUD mutations. This adapter deliberately does not open a second connection.
 """
+from core.services.interfaces import ITaskRepository
 
 
-class TaskRepository:
+class TaskRepository(ITaskRepository):
     def __init__(self, database):
         self.database = database
 
