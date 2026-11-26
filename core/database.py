@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE TABLE IF NOT EXISTS activity_logs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     action      TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id   INTEGER,
+    user_name   TEXT NOT NULL DEFAULT 'system',
     details     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL
 );
@@ -133,8 +136,14 @@ class Database:
                 if column not in task_columns:
                     conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {declaration}")
             log_columns = {row["name"] for row in conn.execute("PRAGMA table_info(activity_logs)")}
-            if "details" not in log_columns:
-                conn.execute("ALTER TABLE activity_logs ADD COLUMN details TEXT NOT NULL DEFAULT ''")
+            for column, declaration in (
+                ("details", "TEXT NOT NULL DEFAULT ''"),
+                ("entity_type", "TEXT"),
+                ("entity_id", "INTEGER"),
+                ("user_name", "TEXT NOT NULL DEFAULT 'system'"),
+            ):
+                if column not in log_columns:
+                    conn.execute(f"ALTER TABLE activity_logs ADD COLUMN {column} {declaration}")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
@@ -143,7 +152,7 @@ class Database:
         log.info("database ready at %s", self.path)
 
     # ---- tasks ----
-    def add_task(self, task: dict) -> dict:
+    def add_task(self, task: dict, user_name: str = "Admin") -> dict:
         now = _now()
         with self.connect() as conn:
             cur = conn.execute(
@@ -153,7 +162,12 @@ class Database:
                 {**task, "now": now, "priority": task.get("priority", "normal")},
             )
             task_id = cur.lastrowid
-        self.add_system_log("CREATE_TASK", task["title"])
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES ('CREATE', 'TASK', ?, ?, ?, ?)""",
+                (task_id, user_name, task["title"], now),
+            )
         log.info("task #%s added: %s", task_id, task["title"])
         return self.get_task(task_id)
 
@@ -248,7 +262,8 @@ class Database:
 
     def update_task(self, task_id: int, *, title: str | None = None, description: str | None = None,
                     status: str | None = None, category: str | None = None,
-                    agent: str | None = None, priority: str | None = None) -> dict:
+                    agent: str | None = None, priority: str | None = None,
+                    user_name: str = "Admin") -> dict:
         self.get_task(task_id)  # raises LookupError if missing
         sets, params = ["updated_at = ?"], [_now()]
         if title is not None:
@@ -276,14 +291,24 @@ class Database:
         params.append(task_id)
         with self.connect() as conn:
             conn.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?", params)
-        self.add_system_log("UPDATE_TASK", title or self.get_task(task_id)["title"])
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES ('UPDATE', 'TASK', ?, ?, ?, ?)""",
+                (task_id, user_name, title or self.get_task(task_id)["title"], _now()),
+            )
         log.info("task #%s updated", task_id)
         return self.get_task(task_id)
 
-    def delete_task(self, task_id: int) -> None:
+    def delete_task(self, task_id: int, user_name: str = "Admin") -> None:
         task = self.get_task(task_id)
-        self.add_system_log("DELETE_TASK", str(task_id) + ": " + task["title"])
         with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES ('DELETE', 'TASK', ?, ?, ?, ?)""",
+                (task_id, user_name, task["title"], _now()),
+            )
             conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         log.info("task #%s deleted", task_id)
 
@@ -297,17 +322,22 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def add_system_log(self, action: str, details: str = "") -> None:
+    def add_system_log(self, action: str, details: str = "", *,
+                       entity_type: str | None = None, entity_id: int | None = None,
+                       user_name: str = "system") -> None:
         with self.connect() as conn:
             conn.execute(
-                "INSERT INTO activity_logs (action, details, created_at) VALUES (?, ?, ?)",
-                (action, details, _now()),
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (action, entity_type, entity_id, user_name, details, _now()),
             )
 
     def list_system_logs(self, limit: int = 200) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT id, action, details, created_at FROM activity_logs ORDER BY id DESC LIMIT ?",
+                """SELECT id, action, entity_type, entity_id, user_name, details, created_at
+                   FROM activity_logs ORDER BY id DESC LIMIT ?""",
                 (max(1, min(int(limit), 1000)),),
             ).fetchall()
         return [dict(row) for row in rows]
