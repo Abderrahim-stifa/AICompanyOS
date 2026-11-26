@@ -1,6 +1,7 @@
 """SQLite storage for tasks, agents and the accounting ledger."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -81,6 +82,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     entity_id   INTEGER,
     user_name   TEXT NOT NULL DEFAULT 'system',
     details     TEXT NOT NULL DEFAULT '',
+    old_values  TEXT,
+    new_values  TEXT,
     created_at  TEXT NOT NULL
 );
 
@@ -141,6 +144,8 @@ class Database:
                 ("entity_type", "TEXT"),
                 ("entity_id", "INTEGER"),
                 ("user_name", "TEXT NOT NULL DEFAULT 'system'"),
+                ("old_values", "TEXT"),
+                ("new_values", "TEXT"),
             ):
                 if column not in log_columns:
                     conn.execute(f"ALTER TABLE activity_logs ADD COLUMN {column} {declaration}")
@@ -287,61 +292,54 @@ class Database:
                     agent: str | None = None, priority: str | None = None,
                     source: str | None = None, price: float | None = None,
                     currency: str | None = None, user_name: str = "Admin") -> dict:
-        self.get_task(task_id)  # raises LookupError if missing
+        values = {"title": title, "description": description, "priority": priority,
+                  "source": source, "price": price, "currency": currency,
+                  "status": status, "category": category, "agent": agent}
         sets, params = ["updated_at = ?"], [_now()]
-        if title is not None:
-            sets.append("title = ?")
-            params.append(title)
-        if description is not None:
-            sets.append("description = ?")
-            params.append(description)
-        if priority is not None:
-            if priority not in {"low", "normal", "high", "urgent"}:
+        for field, value in values.items():
+            if value is None:
+                continue
+            if field == "priority" and value not in {"low", "normal", "high", "urgent"}:
                 raise ValidationError("priority must be low, normal, high or urgent")
-            sets.append("priority = ?")
-            params.append(priority)
-        if source is not None:
-            sets.append("source = ?")
-            params.append(source)
-        if price is not None:
-            if isinstance(price, bool) or float(price) < 0:
-                raise ValidationError("price must be zero or more")
-            sets.append("price = ?")
-            params.append(float(price))
-        if currency is not None:
-            sets.append("currency = ?")
-            params.append(currency)
-        if status is not None:
-            if status not in TASK_STATUSES:
-                raise ValidationError(f"status must be one of: {', '.join(TASK_STATUSES)}")
-            sets.append("status = ?")
-            params.append(status)
-        if category is not None:
-            sets.append("category = ?")
-            params.append(category)
-        if agent is not None:
-            sets.append("agent = ?")
-            params.append(agent)
+            if field == "status" and value not in TASK_STATUSES:
+                raise ValidationError("invalid task status")
+            if field == "price":
+                if isinstance(value, bool) or float(value) < 0:
+                    raise ValidationError("price must be zero or more")
+                value = float(value)
+            sets.append(field + " = ?")
+            params.append(value)
         params.append(task_id)
         with self.connect() as conn:
-            conn.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?", params)
+            old_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if old_row is None:
+                raise LookupError("task #{} not found".format(task_id))
+            old_values = dict(old_row)
+            conn.execute("UPDATE tasks SET " + ", ".join(sets) + " WHERE id = ?", params)
+            new_values = dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())
             conn.execute(
                 """INSERT INTO activity_logs
-                   (action, entity_type, entity_id, user_name, details, created_at)
-                   VALUES ('UPDATE', 'TASK', ?, ?, ?, ?)""",
-                (task_id, user_name, title or self.get_task(task_id)["title"], _now()),
+                   (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+                   VALUES ('UPDATE', 'TASK', ?, ?, ?, ?, ?, ?)""",
+                (task_id, user_name, new_values["title"],
+                 json.dumps(old_values, ensure_ascii=False, default=str),
+                 json.dumps(new_values, ensure_ascii=False, default=str), _now()),
             )
         log.info("task #%s updated", task_id)
-        return self.get_task(task_id)
+        return new_values
 
     def delete_task(self, task_id: int, user_name: str = "Admin") -> None:
-        task = self.get_task(task_id)
         with self.connect() as conn:
+            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if row is None:
+                raise LookupError("task #{} not found".format(task_id))
+            task = dict(row)
             conn.execute(
                 """INSERT INTO activity_logs
-                   (action, entity_type, entity_id, user_name, details, created_at)
-                   VALUES ('DELETE', 'TASK', ?, ?, ?, ?)""",
-                (task_id, user_name, task["title"], _now()),
+                   (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+                   VALUES ('DELETE', 'TASK', ?, ?, ?, ?, NULL, ?)""",
+                (task_id, user_name, task["title"],
+                 json.dumps(task, ensure_ascii=False, default=str), _now()),
             )
             conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         log.info("task #%s deleted", task_id)
@@ -358,19 +356,22 @@ class Database:
 
     def add_system_log(self, action: str, details: str = "", *,
                        entity_type: str | None = None, entity_id: int | None = None,
-                       user_name: str = "system") -> None:
+                       user_name: str = "system", old_values=None, new_values=None) -> None:
         with self.connect() as conn:
             conn.execute(
                 """INSERT INTO activity_logs
-                   (action, entity_type, entity_id, user_name, details, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (action, entity_type, entity_id, user_name, details, _now()),
+                   (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (action, entity_type, entity_id, user_name, details,
+                 json.dumps(old_values, ensure_ascii=False, default=str) if old_values is not None else None,
+                 json.dumps(new_values, ensure_ascii=False, default=str) if new_values is not None else None,
+                 _now()),
             )
 
     def list_system_logs(self, limit: int = 200) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT id, action, entity_type, entity_id, user_name, details, created_at
+                """SELECT id, action, entity_type, entity_id, user_name, details, old_values, new_values, created_at
                    FROM activity_logs ORDER BY id DESC LIMIT ?""",
                 (max(1, min(int(limit), 1000)),),
             ).fetchall()
