@@ -48,6 +48,21 @@ class Company:
     def delete_task(self, task_id) -> None:
         self.db.delete_task(clean_id(task_id, "task id"))
 
+    def assign_role_agent(self, task_id, agent_key: str) -> dict:
+        task_id = clean_id(task_id, "task id")
+        agent_key = clean_text(agent_key, "agent key", max_len=80)
+        return self.db.assign_role_agent(task_id, agent_key)
+
+    def set_task_status(self, task_id, status: str) -> dict:
+        task_id = clean_id(task_id, "task id")
+        status = clean_choice(status, "status", TASK_STATUSES)
+        return self.db.set_task_status(task_id, status)
+
+    def save_task_result(self, task_id, result: str) -> dict:
+        task_id = clean_id(task_id, "task id")
+        result = clean_text(result, "result", max_len=20000)
+        return self.db.save_task_result(task_id, result)
+
     # ledger
     def add_ledger(self, data: dict) -> dict:
         return self.db.add_ledger_entry(validate_ledger_entry(data, self.settings.default_currency))
