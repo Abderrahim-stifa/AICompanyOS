@@ -8,6 +8,7 @@
 
 **منصة محلية مفتوحة المصدر لإدارة الأعمال والمهام والعملاء عبر وكلاء قابلين للتشغيل محلياً.**
 
+[![AICompanyOS Build](https://github.com/Abderrahim-stifa/AICompanyOS/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Abderrahim-stifa/AICompanyOS/actions/workflows/build.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![SQLite](https://img.shields.io/badge/SQLite-Local%20Database-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
