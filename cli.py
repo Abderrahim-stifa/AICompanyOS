@@ -57,13 +57,19 @@ def make_handler(company: Company):
             return hmac.compare_digest(self.headers.get("X-API-Key", ""), api_key)
 
         def _read_json(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
+            raw_length = self.headers.get("Content-Length") or "0"
+            try:
+                length = int(raw_length)
+            except (TypeError, ValueError):
+                raise ValidationError("invalid Content-Length header") from None
+            if length < 0:
+                raise ValidationError("Content-Length must not be negative")
             if length > MAX_BODY:
                 raise ValidationError("request body too large")
             raw = self.rfile.read(length) if length else b"{}"
             try:
                 data = json.loads(raw or b"{}")
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 raise ValidationError("invalid JSON") from None
             if not isinstance(data, dict):
                 raise ValidationError("JSON body must be an object")
