@@ -30,7 +30,7 @@ def filter_audit_logs(logs: pd.DataFrame, selected_user: str = "الكل",
     if "created_at" in filtered.columns:
         timestamps = pd.to_datetime(filtered["created_at"], errors="coerce", utc=True)
         if date_from is not None:
-            start = pd.Timestamp(datetime.combine(date_from, time.min), tz="UTC")
+            start = pd.Timestamp(date_from).tz_localize("UTC")
             filtered = filtered[timestamps.loc[filtered.index] >= start]
             timestamps = pd.to_datetime(filtered["created_at"], errors="coerce", utc=True)
         if date_to is not None:
