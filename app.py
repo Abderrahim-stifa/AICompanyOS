@@ -10,6 +10,7 @@ import plotly.express as px
 import streamlit as st
 
 from core import agents as agents_mod
+from core.auth_context import CurrentUser
 from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
@@ -18,6 +19,7 @@ from core.service import Company
 from core.ui_helpers import notify_and_refresh
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 from pages.logs_page import show_logs_page
+from pages.audit_page import show_audit_page
 
 st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
 APP_VERSION = "0.3.4"
@@ -370,12 +372,13 @@ def confirm_delete_dialog(company: Company, task_id: int, user_name: str) -> Non
 def page_tasks(company: Company) -> None:
     st.header("✅ إدارة المهام")
     user_name = st.text_input(
-        "المستخدم الحالي لتسجيل النشاط",
-        value=st.session_state.get("audit_user", "Admin"),
+        "المستخدم الحالي",
+        value=CurrentUser.get_username(),
         key="audit_user_input",
-        help="لا توجد مصادقة مستخدمين بعد؛ هذه الهوية تسجل اسم المنفذ في سجل التدقيق.",
-    ).strip() or "Admin"
-    st.session_state["audit_user"] = user_name
+        help="اسم المشغّل الحالي الذي سيظهر في سجل التدقيق؛ هذا ليس نظام مصادقة.",
+    ).strip() or "system"
+    CurrentUser.set_username(user_name)
+    user_name = CurrentUser.get_username()
 
     tasks = company.db.list_tasks()
     agents = company.db.list_agents()
@@ -573,6 +576,7 @@ PAGES = {
     "المشاريع": page_projects,
     "المهام": page_tasks,
     "سجل الأنشطة": show_logs_page,
+    "سجل التعديلات": show_audit_page,
     "الحسابات": page_finance,
     "الإعدادات": page_settings,
 }
