@@ -150,3 +150,63 @@ def record_activity_log(action: str, db_path: str | None = None) -> None:
 
 if __name__ == "__main__":
     print(f"AICompanyOS database ready: {initialize_database()}")
+
+
+def load_ui_settings(db_path: str | None = None) -> dict:
+    """Load persisted dashboard preferences from the settings table."""
+    target = initialize_database(db_path)
+    with sqlite3.connect(target) as conn:
+        row = conn.execute(
+            "SELECT company_name, language, dark_mode, theme FROM settings WHERE id = 1"
+        ).fetchone()
+    if row is None:
+        return dict(DEFAULT_SETTINGS)
+    return {
+        "company_name": row[0],
+        "language": row[1],
+        "dark_mode": bool(row[2]),
+        "theme": row[3],
+    }
+
+
+def save_ui_settings(values: dict, db_path: str | None = None) -> dict:
+    """Validate and persist dashboard preferences to SQLite and settings.json."""
+    if not isinstance(values, dict):
+        raise TypeError("settings must be a dictionary")
+    current = load_ui_settings(db_path)
+    merged = {**current, **values}
+    company_name = str(merged.get("company_name", "")).strip()
+    language = str(merged.get("language", "ar")).strip().lower()
+    theme = str(merged.get("theme", "modern")).strip().lower()
+    if not company_name or len(company_name) > 100:
+        raise ValueError("company_name must contain 1 to 100 characters")
+    if language not in {"ar", "en"}:
+        raise ValueError("language must be 'ar' or 'en'")
+    if theme not in {"modern"}:
+        raise ValueError("unsupported theme")
+    normalized = {
+        "company_name": company_name,
+        "language": language,
+        "dark_mode": bool(merged.get("dark_mode", True)),
+        "theme": theme,
+    }
+    target = db_path or load_settings().db_path
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = SETTINGS_FILE.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(normalized, ensure_ascii=False, indent=2) + "\\n",
+        encoding="utf-8",
+    )
+    temporary.replace(SETTINGS_FILE)
+    with sqlite3.connect(target) as conn:
+        conn.execute(
+            """INSERT INTO settings (id, company_name, language, dark_mode, theme)
+               VALUES (1, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 company_name=excluded.company_name,
+                 language=excluded.language,
+                 dark_mode=excluded.dark_mode,
+                 theme=excluded.theme""",
+            (company_name, language, int(normalized["dark_mode"]), theme),
+        )
+    return normalized
