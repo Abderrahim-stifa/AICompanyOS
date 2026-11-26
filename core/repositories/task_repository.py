@@ -10,14 +10,20 @@ class TaskRepository(ITaskRepository):
     def __init__(self, database):
         self.database = database
 
-    def create(self, data, user_name="Admin"):
+    def create(self, data, user_name="system"):
         return self.database.add_task(data, user_name=user_name)
 
-    def update(self, task_id, data, user_name="Admin"):
-        return self.database.update_task(task_id, user_name=user_name, **data)
+    def update(self, task_id, data, user_name="system"):
+        try:
+            return self.database.update_task(task_id, user_name=user_name, **data)
+        except LookupError as exc:
+            raise ValueError(str(exc)) from exc
 
-    def delete(self, task_id, user_name="Admin"):
-        return self.database.delete_task(task_id, user_name=user_name)
+    def delete(self, task_id, user_name="system"):
+        try:
+            return self.database.delete_task(task_id, user_name=user_name)
+        except LookupError as exc:
+            raise ValueError(str(exc)) from exc
 
     def get_by_id(self, task_id):
         return self.database.get_task(task_id)
