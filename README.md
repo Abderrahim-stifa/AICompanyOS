@@ -164,3 +164,21 @@ python cli.py serve
 **AICompanyOS — Build your company, locally.**
 
 </div>
+
+
+## v0.1 role agents and dashboard preferences
+
+The seven role-based agents are stored separately in `role_agents`; the original
+`agents` table remains dedicated to the five-agent task pipeline. Database
+initialization is additive and safe to run repeatedly:
+
+```bash
+python -m core.init_db
+python -m streamlit run app.py
+```
+
+Dashboard preferences (company name, preferred language, dark mode, and theme)
+are persisted in both `settings` in SQLite and `data/settings.json`. The
+dashboard currently remains Arabic/RTL; the English language choice is saved
+as a preference for a future localization pass. Role-agent task counts,
+active/ready state, and last activity are read from the live task/activity data.
