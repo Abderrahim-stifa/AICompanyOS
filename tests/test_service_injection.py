@@ -42,7 +42,7 @@ def test_service_accepts_injected_repository_and_logger():
     assert repository.created[1] == "Tester"
 
     service.log_activity("EXPORT", "TASK", 101, "Tester", "manual event")
-    assert logger.events[0]["action"] == "EXPORT"
+    assert logger.events[-1]["action"] == "EXPORT"
 
 
 def test_service_and_repository_satisfy_contracts(temp_db):
