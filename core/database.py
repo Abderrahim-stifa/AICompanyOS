@@ -23,7 +23,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     status      TEXT NOT NULL DEFAULT 'found',
     agent       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    updated_at  TEXT NOT NULL,
+    role_agent_key TEXT,
+    result      TEXT,
+    assigned_at TEXT,
+    completed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -109,6 +113,17 @@ class Database:
     def init(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            # Additive migration: preserve the legacy pipeline agent column.
+            task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
+            for column, declaration in (
+                ("role_agent_key", "TEXT"),
+                ("result", "TEXT"),
+                ("assigned_at", "TEXT"),
+                ("completed_at", "TEXT"),
+            ):
+                if column not in task_columns:
+                    conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {declaration}")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
                 DEFAULT_AGENTS,
@@ -127,6 +142,79 @@ class Database:
             )
             task_id = cur.lastrowid
         log.info("task #%s added: %s", task_id, task["title"])
+        return self.get_task(task_id)
+
+    def list_role_agents(self) -> list[dict]:
+        """List the seven business-role agents without mixing pipeline agents."""
+        with self.connect() as conn:
+            try:
+                rows = conn.execute(
+                    "SELECT agent_key, name, role FROM role_agents ORDER BY rowid"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return []
+        return [dict(row) for row in rows]
+
+    def assign_role_agent(self, task_id: int, agent_key: str) -> dict:
+        """Assign a task to one of the seven role agents and record the event."""
+        task = self.get_task(task_id)
+        with self.connect() as conn:
+            agent = conn.execute(
+                "SELECT agent_key FROM role_agents WHERE agent_key = ?", (agent_key,)
+            ).fetchone()
+            if agent is None:
+                raise LookupError(f"role agent {agent_key!r} not found")
+            now = _now()
+            conn.execute(
+                """UPDATE tasks SET role_agent_key = ?, status = 'assigned',
+                   assigned_at = ?, completed_at = NULL, updated_at = ? WHERE id = ?""",
+                (agent_key, now, now, task_id),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (agent_key, f"تم إسناد المهمة: {task['title']}", task_id, now),
+            )
+        log.info("task #%s assigned to role agent %s", task_id, agent_key)
+        return self.get_task(task_id)
+
+    def set_task_status(self, task_id: int, status: str) -> dict:
+        """Change task lifecycle state and maintain timestamps/activity history."""
+        if status not in TASK_STATUSES:
+            raise ValidationError(f"status must be one of: {', '.join(TASK_STATUSES)}")
+        task = self.get_task(task_id)
+        now = _now()
+        completed_at = now if status == "done" else None
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?",
+                (status, completed_at, now, task_id),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (task.get("role_agent_key") or task.get("agent") or "system",
+                 f"تغيير حالة المهمة إلى {status}", task_id, now),
+            )
+        return self.get_task(task_id)
+
+    def save_task_result(self, task_id: int, result: str) -> dict:
+        """Persist an agent's execution result and mark the task complete."""
+        if not isinstance(result, str) or not result.strip():
+            raise ValidationError("result is required")
+        if len(result.strip()) > 20000:
+            raise ValidationError("result is too long (max 20000 characters)")
+        task = self.get_task(task_id)
+        now = _now()
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE tasks SET result = ?, status = 'done',
+                   completed_at = ?, updated_at = ? WHERE id = ?""",
+                (result.strip(), now, now, task_id),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (task.get("role_agent_key") or task.get("agent") or "system",
+                 "تم حفظ نتيجة تنفيذ المهمة", task_id, now),
+            )
         return self.get_task(task_id)
 
     def get_task(self, task_id: int) -> dict:
