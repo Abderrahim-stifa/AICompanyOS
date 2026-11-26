@@ -355,7 +355,8 @@ def page_tasks(company: Company) -> None:
                                  format_func=lambda v: v if v == "الكل" else ar(TASK_AR, v))
     table(company.db.list_tasks(None if status_filter == "الكل" else status_filter),
           {"id": "الرقم", "title": "المهمة", "source": "المصدر", "category": "التصنيف",
-           "price": "السعر", "currency": "العملة", "status": "الحالة", "agent": "الوكيل"},
+           "price": "السعر", "currency": "العملة", "status": "الحالة", "agent": "وكيل Pipeline",
+           "role_agent_key": "وكيل الدور", "assigned_at": "وقت الإسناد", "completed_at": "وقت الإكمال"},
           {"status": TASK_AR, "agent": AGENT_AR})
 
     with st.form("add_task", clear_on_submit=True):
@@ -381,19 +382,54 @@ def page_tasks(company: Company) -> None:
             new_status = st.selectbox("الحالة الجديدة", TASK_STATUSES,
                                       format_func=lambda v: ar(TASK_AR, v), key="edit_task_status")
             agents = [a["name"] for a in company.db.list_agents()]
-            agent = st.selectbox("إسناد إلى وكيل", ["—", *agents],
+            agent = st.selectbox("إسناد إلى وكيل Pipeline (النظام القديم)", ["—", *agents],
                                  format_func=lambda v: v if v == "—" else ar(AGENT_AR, v))
+            role_agents = company.db.list_role_agents()
+            role_options = {"— بدون إسناد —": None, **{
+                f"{item['name']} — {item['role']}": item["agent_key"] for item in role_agents
+            }}
+            role_choice = st.selectbox("إسناد إلى وكيل الدور", list(role_options), key="task_role_agent")
             col1, col2 = st.columns(2)
             if col1.button("حفظ التحديث"):
+                task_id = options[choice]
                 data = {"status": new_status}
                 if agent != "—":
                     data["agent"] = agent
-                company.update_task(options[choice], data)
+                company.update_task(task_id, data)
+                if role_options[role_choice]:
+                    company.assign_role_agent(task_id, role_options[role_choice])
+                elif role_agents:
+                    # An explicit no-agent selection clears a previous role assignment.
+                    with company.db.connect() as conn:
+                        conn.execute(
+                            "UPDATE tasks SET role_agent_key = NULL, assigned_at = NULL WHERE id = ?",
+                            (task_id,),
+                        )
                 st.rerun()
             sure = col2.checkbox("أؤكد الحذف", key="del_task_ok")
             if col2.button("حذف المهمة") and sure:
                 company.delete_task(options[choice])
                 st.rerun()
+
+        assigned_tasks = [task for task in tasks if task.get("role_agent_key")]
+        if assigned_tasks:
+            st.subheader("نتائج تنفيذ الوكلاء")
+            task_options = {f"{task['id']} — {task['title']}": task for task in assigned_tasks}
+            result_choice = st.selectbox("المهمة", list(task_options), key="task_result_target")
+            selected_task = task_options[result_choice]
+            st.caption(f"الوكيل: {selected_task['role_agent_key']} · الحالة: {ar(TASK_AR, selected_task['status'])}")
+            if selected_task.get("result"):
+                st.markdown("**النتيجة المحفوظة**")
+                st.write(selected_task["result"])
+            with st.form("save_task_result"):
+                result_text = st.text_area("نتيجة التنفيذ أو تقرير الوكيل", height=140)
+                if st.form_submit_button("حفظ النتيجة وإكمال المهمة"):
+                    try:
+                        company.save_task_result(selected_task["id"], result_text)
+                        st.success("تم حفظ النتيجة وإكمال المهمة.")
+                        st.rerun()
+                    except ValidationError as exc:
+                        fail(exc)
 
 
 def page_finance(company: Company) -> None:
