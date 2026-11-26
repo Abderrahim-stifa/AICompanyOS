@@ -167,11 +167,15 @@ class Database:
                 {**task, "now": now, "priority": task.get("priority", "normal")},
             )
             task_id = cur.lastrowid
+            created_values = dict(conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone())
             conn.execute(
                 """INSERT INTO activity_logs
-                   (action, entity_type, entity_id, user_name, details, created_at)
-                   VALUES ('CREATE', 'TASK', ?, ?, ?, ?)""",
-                (task_id, user_name, task["title"], now),
+                   (action, entity_type, entity_id, user_name, details, new_values, created_at)
+                   VALUES ('CREATE', 'TASK', ?, ?, ?, ?, ?)""",
+                (task_id, user_name, task["title"],
+                 json.dumps(created_values, ensure_ascii=False, default=str), now),
             )
         log.info("task #%s added: %s", task_id, task["title"])
         return self.get_task(task_id)
