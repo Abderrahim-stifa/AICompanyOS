@@ -11,6 +11,7 @@ import streamlit as st
 from core import agents as agents_mod
 from core import backup as backup_mod
 from core import ai_agents as role_agents
+from core.agent_center import build_agent_overview
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 
@@ -159,6 +160,23 @@ def page_agents(company: Company) -> None:
 def page_role_agents(company: Company) -> None:
     st.header("مركز الوكلاء السبعة")
     st.caption("اختر دوراً واكتب المهمة للحصول على خطة عمل منظمة. النسخة الحالية محلية وقائمة على قواعد وقوالب، وليست نماذج LLM مستقلة.")
+    overview = build_agent_overview(company.db.list_tasks())
+    active_count = sum(item["status"] == "active" for item in overview)
+    ready_count = sum(item["status"] == "ready" for item in overview)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("إجمالي الوكلاء", len(overview))
+    m2.metric("وكلاء نشطون", active_count)
+    m3.metric("وكلاء جاهزون", ready_count)
+    st.dataframe(
+        [{
+            "الوكيل": item["name_ar"],
+            "الحالة": {"active": "نشط", "ready": "جاهز", "disabled": "معطل"}[item["status"]],
+            "إجمالي المهام": item["task_count"],
+            "المهام النشطة": item["active_task_count"],
+            "المهام المكتملة": item["completed_task_count"],
+        } for item in overview],
+        width="stretch", hide_index=True,
+    )
     labels = {key: value["name_ar"] for key, value in role_agents.AGENTS.items()}
     selected = st.selectbox("الوكيل", list(labels), format_func=lambda key: labels[key])
     st.info(role_agents.AGENTS[selected]["purpose"])
