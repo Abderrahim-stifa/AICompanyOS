@@ -15,6 +15,7 @@ from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
+from core.ui_helpers import notify_and_refresh
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 from pages.logs_page import show_logs_page
 
@@ -350,6 +351,22 @@ def page_projects(company: Company) -> None:
                 st.rerun()
 
 
+@st.dialog("تأكيد الحذف")
+def confirm_delete_dialog(company: Company, task_id: int, user_name: str) -> None:
+    st.warning("سيتم حذف المهمة نهائياً. لا يمكن التراجع عن هذه العملية.")
+    col_confirm, col_cancel = st.columns(2)
+    with col_confirm:
+        if st.button("نعم، احذف المهمة", type="primary", key="confirm_task_delete"):
+            try:
+                company.delete_task(task_id, user_name=user_name)
+                notify_and_refresh("تم حذف المهمة وتسجيل العملية.")
+            except (LookupError, ValueError) as exc:
+                fail(exc)
+    with col_cancel:
+        if st.button("إلغاء", key="cancel_task_delete"):
+            st.rerun()
+
+
 def page_tasks(company: Company) -> None:
     st.header("✅ إدارة المهام")
     user_name = st.text_input(
@@ -403,8 +420,7 @@ def page_tasks(company: Company) -> None:
                         company.update_task(created["id"], {
                             "agent": pipeline_agent, "user_name": user_name,
                         })
-                    st.success(f"تم إنشاء المهمة رقم {created['id']}")
-                    st.rerun()
+                    notify_and_refresh(f"تم إنشاء المهمة رقم {created['id']}")
                 except (ValidationError, LookupError, ValueError) as exc:
                     fail(exc)
 
@@ -451,8 +467,7 @@ def page_tasks(company: Company) -> None:
                             company.assign_role_agent(selected["id"], role_key, user_name=user_name)
                         elif not role_key and selected.get("role_agent_key"):
                             company.unassign_role_agent(selected["id"], user_name=user_name)
-                        st.success("تم تحديث المهمة.")
-                        st.rerun()
+                        notify_and_refresh("تم تحديث المهمة.")
                     except (ValidationError, LookupError, ValueError) as exc:
                         fail(exc)
 
@@ -462,14 +477,8 @@ def page_tasks(company: Company) -> None:
         else:
             delete_options = {f"#{item['id']} — {item['title']}": item["id"] for item in tasks}
             delete_label = st.selectbox("المهمة المراد حذفها", list(delete_options), key="task_delete_choice")
-            confirm_delete = st.checkbox("أؤكد أنني أريد حذف هذه المهمة", key="task_delete_confirm")
-            if st.button("حذف المهمة نهائياً", type="primary", disabled=not confirm_delete):
-                try:
-                    company.delete_task(delete_options[delete_label], user_name=user_name)
-                    st.success("تم حذف المهمة وتسجيل العملية.")
-                    st.rerun()
-                except (LookupError, ValueError) as exc:
-                    fail(exc)
+            if st.button("حذف المهمة", type="primary", key="open_task_delete_dialog"):
+                confirm_delete_dialog(company, delete_options[delete_label], user_name)
 
     st.caption("كل عمليات الإنشاء والتعديل والحذف تسجل المستخدم والكيان ورقم المهمة في سجل الأنشطة.")
 
