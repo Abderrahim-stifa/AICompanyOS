@@ -12,7 +12,7 @@ from core import agents as agents_mod
 from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
-from core.init_db import list_role_agents
+from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 
@@ -431,6 +431,31 @@ def page_finance(company: Company) -> None:
 def page_settings(company: Company) -> None:
     st.header("⚙️ الإعدادات والنسخ الاحتياطي")
     s = company.settings
+    preferences = load_ui_settings(s.db_path)
+
+    st.subheader("إعدادات الشركة والواجهة")
+    with st.form("ui_preferences"):
+        company_name = st.text_input("اسم الشركة", value=preferences["company_name"], max_chars=100)
+        language = st.selectbox(
+            "لغة التفضيل",
+            ["ar", "en"],
+            index=["ar", "en"].index(preferences["language"]),
+            format_func=lambda value: "العربية" if value == "ar" else "English",
+            help="حالياً محتوى الواجهة بالعربية؛ اختيار English يُحفظ كتفضيل تمهيداً لإضافة الترجمة.",
+        )
+        dark_mode = st.toggle("الوضع الليلي", value=preferences["dark_mode"])
+        if st.form_submit_button("حفظ الإعدادات"):
+            try:
+                save_ui_settings({
+                    "company_name": company_name,
+                    "language": language,
+                    "dark_mode": dark_mode,
+                    "theme": preferences["theme"],
+                }, s.db_path)
+                st.success("تم حفظ الإعدادات. أعد تحميل الصفحة لتطبيق المظهر.")
+                st.rerun()
+            except (TypeError, ValueError) as exc:
+                fail(exc)
 
     st.subheader("النسخ الاحتياطي")
     if st.button("إنشاء نسخة احتياطية الآن"):
@@ -466,7 +491,21 @@ PAGES = {
 
 
 def main() -> None:
+    company = get_company()
+    preferences = load_ui_settings(company.settings.db_path)
     st.markdown(RTL_CSS, unsafe_allow_html=True)
+    if not preferences["dark_mode"]:
+        st.markdown("""
+        <style>
+        .stApp {background:#f4f6fb !important;color:#172033 !important;}
+        h1,h2,h3,p,label,[data-testid="stMarkdownContainer"] {color:#172033 !important;}
+        [data-testid="stSidebar"] {background:#e8edf6 !important;}
+        [data-testid="stSidebar"] * {color:#172033 !important;}
+        [data-testid="stMetric"] {background:#fff !important;border-color:#d8deea !important;}
+        [data-testid="stMetricLabel"],[data-testid="stMetricValue"] {color:#172033 !important;}
+        .stTextInput input,.stTextArea textarea,.stSelectbox [data-baseweb="select"] {background:#fff !important;color:#172033 !important;}
+        </style>
+        """, unsafe_allow_html=True)
     st.markdown("""
     <div class="brand-header">
       <svg width="76" height="76" viewBox="0 0 120 120" role="img" aria-label="AICompanyOS robot logo">
@@ -474,10 +513,9 @@ def main() -> None:
         <path d="M22 38Q22 20 42 20H78Q98 20 98 40V82Q98 101 78 101H42Q22 101 22 82Z" fill="url(#shell)" stroke="#ff4d86" stroke-width="3"/>
         <rect x="31" y="39" width="58" height="31" rx="14" fill="#242044"/><ellipse cx="44" cy="54" rx="5" ry="9" fill="#35c7ff"/><ellipse cx="76" cy="54" rx="5" ry="9" fill="#35c7ff"/><rect x="45" y="80" width="30" height="9" rx="4.5" fill="#33254c"/><rect x="43" y="8" width="34" height="11" rx="5.5" fill="url(#gold)"/><path d="M18 42V76M102 42V76" stroke="#ff4d86" stroke-width="6" stroke-linecap="round"/><circle cx="17" cy="33" r="6" fill="#ff4d86"/><circle cx="103" cy="33" r="6" fill="#ff4d86"/>
       </svg>
-      <div><div class="brand-name">AICompanyOS</div><div class="brand-tagline">AI Business Operating System</div></div>
+      <div><div class="brand-name">{__COMPANY_NAME__}</div><div class="brand-tagline">AI Business Operating System · v{APP_VERSION}</div></div>
     </div><div class="brand-accent"></div>
-    """, unsafe_allow_html=True)
-    company = get_company()
+    """.replace("{__COMPANY_NAME__}", __import__("html").escape(preferences["company_name"])), unsafe_allow_html=True)
     page = st.sidebar.radio("القائمة", list(PAGES))
     PAGES[page](company)
 
