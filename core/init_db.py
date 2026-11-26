@@ -114,5 +114,39 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
     return target
 
 
+def list_role_agents(db_path: str | None = None) -> list[dict]:
+    """Return role-agent rows with live task counts and latest activity timestamps."""
+    target = db_path or load_settings().db_path
+    initialize_database(target)
+    with sqlite3.connect(target) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT r.agent_key, r.name, r.role, r.status,
+                   (SELECT COUNT(*) FROM tasks t WHERE t.agent = r.agent_key) AS tasks_count,
+                   (SELECT MAX(a.created_at) FROM activity a
+                    WHERE a.agent = r.agent_key) AS last_activity
+            FROM role_agents r
+            ORDER BY r.rowid
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def record_activity_log(action: str, db_path: str | None = None) -> None:
+    """Append an application-level event to the dedicated v0.1 activity log."""
+    if not isinstance(action, str) or not action.strip():
+        raise ValueError("action must be a non-empty string")
+    target = db_path or load_settings().db_path
+    initialize_database(target)
+    from datetime import datetime, timezone
+
+    with sqlite3.connect(target) as conn:
+        conn.execute(
+            "INSERT INTO activity_logs (action, created_at) VALUES (?, ?)",
+            (action.strip(), datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        )
+
+
 if __name__ == "__main__":
     print(f"AICompanyOS database ready: {initialize_database()}")
