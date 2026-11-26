@@ -11,7 +11,6 @@ import streamlit as st
 from core import agents as agents_mod
 from core import backup as backup_mod
 from core import ai_agents as role_agents
-from ai import AGENT_CLASSES
 from core.agent_center import build_agent_overview
 from core.init_db import list_role_agents
 from core.service import Company
