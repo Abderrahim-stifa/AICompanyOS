@@ -64,7 +64,18 @@ class TaskService(BaseService, ITaskService):
         return updated
 
     def delete_task(self, task_id, user_name="Admin"):
-        return self.task_repository.delete(clean_id(task_id, "task id"), user_name=user_name)
+        task_id = clean_id(task_id, "task id")
+        old_task = None
+        if not isinstance(self.task_repository, TaskRepository):
+            old_task = self.task_repository.get_by_id(task_id)
+        result = self.task_repository.delete(task_id, user_name=user_name)
+        if old_task is not None and self.activity_logger is not None:
+            self.activity_logger.log(
+                action="DELETE", entity_type="TASK", entity_id=task_id,
+                user_name=user_name, details=old_task.get("title", ""),
+                old_values=old_task, new_values=None,
+            )
+        return result
 
     def get_task(self, task_id):
         return self.task_repository.get_by_id(clean_id(task_id, "task id"))
