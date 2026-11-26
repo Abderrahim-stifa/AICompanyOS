@@ -1,0 +1,49 @@
+"""Tests for additive and repeatable v0.1 database initialization."""
+import json
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from core import init_db
+
+
+class InitDatabaseTests(unittest.TestCase):
+    def test_initialization_is_idempotent_and_preserves_pipeline_agents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = str(Path(directory) / "company.sqlite3")
+            settings_path = Path(directory) / "settings.json"
+            with patch.object(init_db, "SETTINGS_FILE", settings_path):
+                init_db.initialize_database(db_path)
+                init_db.initialize_database(db_path)
+
+            with sqlite3.connect(db_path) as conn:
+                role_agents = conn.execute("SELECT agent_key FROM role_agents").fetchall()
+                pipeline_agents = conn.execute("SELECT name FROM agents").fetchall()
+                self.assertEqual(len(role_agents), 7)
+                self.assertEqual(len(pipeline_agents), 5)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM app_settings").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM activity_logs").fetchone()[0], 0)
+
+            config = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["company_name"], "AICompanyOS")
+            self.assertTrue(config["dark_mode"])
+
+    def test_existing_settings_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = str(Path(directory) / "company.sqlite3")
+            settings_path = Path(directory) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"company_name": "My Company", "language": "en"}),
+                encoding="utf-8",
+            )
+            with patch.object(init_db, "SETTINGS_FILE", settings_path):
+                init_db.initialize_database(db_path)
+            saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["company_name"], "My Company")
+            self.assertEqual(saved["language"], "en")
+
+
+if __name__ == "__main__":
+    unittest.main()
