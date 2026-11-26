@@ -263,7 +263,8 @@ class Database:
     def update_task(self, task_id: int, *, title: str | None = None, description: str | None = None,
                     status: str | None = None, category: str | None = None,
                     agent: str | None = None, priority: str | None = None,
-                    user_name: str = "Admin") -> dict:
+                    source: str | None = None, price: float | None = None,
+                    currency: str | None = None, user_name: str = "Admin") -> dict:
         self.get_task(task_id)  # raises LookupError if missing
         sets, params = ["updated_at = ?"], [_now()]
         if title is not None:
@@ -277,6 +278,17 @@ class Database:
                 raise ValidationError("priority must be low, normal, high or urgent")
             sets.append("priority = ?")
             params.append(priority)
+        if source is not None:
+            sets.append("source = ?")
+            params.append(source)
+        if price is not None:
+            if isinstance(price, bool) or float(price) < 0:
+                raise ValidationError("price must be zero or more")
+            sets.append("price = ?")
+            params.append(float(price))
+        if currency is not None:
+            sets.append("currency = ?")
+            params.append(currency)
         if status is not None:
             if status not in TASK_STATUSES:
                 raise ValidationError(f"status must be one of: {', '.join(TASK_STATUSES)}")
