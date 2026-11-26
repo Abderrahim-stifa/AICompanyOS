@@ -40,24 +40,41 @@ RTL_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
 :root { color-scheme: dark; }
 html, body, .stApp, [data-testid="stSidebar"], [data-testid="stMarkdownContainer"],
-.stTextInput, .stTextArea, .stSelectbox, .stNumberInput, .stRadio, .stAlert {
+.stTextInput, .stTextArea, .stSelectbox, .stNumberInput, .stRadio, .stAlert,
+.stDateInput, .stMultiSelect, .stButton, .stDownloadButton {
  direction:rtl; text-align:right; font-family:'Cairo',sans-serif;
 }
-.stApp {background:radial-gradient(ellipse at 85% 0%,#21152a 0%,#0a0c12 42%,#080a10 100%);color:#edf2fa;}
-[data-testid="stHeader"]{background:rgba(8,10,16,.92);}
-[data-testid="stSidebar"]{background:#101521;border-left:1px solid #2a263b;}
-[data-testid="stSidebar"] *{color:#edf2fa;}
-.block-container{padding-top:1.5rem;max-width:1500px;}
-h1,h2,h3,p,label{ text-align:right;color:#edf2fa;}
-[data-testid="stMetric"]{background:linear-gradient(145deg,#191827,#111724);border:1px solid #393149;padding:16px;border-radius:15px;direction:rtl;text-align:right;}
-[data-testid="stMetricLabel"]{color:#b7b2c6;}[data-testid="stMetricValue"]{color:#fff;}
-.stButton button{border-radius:10px;border:1px solid #59405b;background:#211a2b;color:#fff;}
-.stButton button:hover{border-color:#ff4d86;color:#fff;}
-hr{border-color:#302a3c;}
-.brand-header{display:flex;align-items:center;gap:18px;direction:ltr;margin:0 0 8px;}
-.brand-name{font-family:Georgia,serif;font-weight:800;font-size:clamp(2rem,5vw,3.4rem);color:#f3edf7;letter-spacing:-1.5px;}
-.brand-tagline{color:#b8adbf;font-size:1rem;margin-top:-8px;}
-.brand-accent{height:3px;border-radius:4px;background:linear-gradient(90deg,#ff4d86,#a78bfa,#f7bd4b);margin:12px 0 26px;}
+.stApp {background:radial-gradient(ellipse at 82% 0%,#202c68 0%,#111936 34%,#090f22 78%,#080d1b 100%);color:#eef3ff;}
+[data-testid="stHeader"]{background:rgba(8,13,29,.94);}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#111a38 0%,#10182e 55%,#0c1428 100%);border-left:1px solid #29386d;}
+[data-testid="stSidebar"] *{color:#eef3ff;}
+[data-testid="stSidebar"] [data-testid="stRadio"] label{padding:9px 12px;border-radius:10px;margin:3px 0;transition:background .15s ease;}
+[data-testid="stSidebar"] [data-testid="stRadio"] label:hover{background:#26366a;}
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked){background:linear-gradient(100deg,#5638d9,#315ee8);box-shadow:0 5px 18px #3325a855;}
+.block-container{padding-top:1.25rem;padding-bottom:2.5rem;max-width:1540px;}
+h1,h2,h3,p,label{ text-align:right;color:#f4f6ff;}
+h1{font-weight:800;letter-spacing:-.4px;}
+[data-testid="stMetric"]{background:linear-gradient(145deg,#1a2c58,#152344);border:1px solid #344b85;padding:17px;border-radius:17px;direction:rtl;text-align:right;box-shadow:0 8px 24px #03081744;}
+[data-testid="stMetricLabel"]{color:#b9c8ee;}[data-testid="stMetricValue"]{color:#fff;font-weight:800;}
+[data-testid="stDataFrame"],[data-testid="stTable"]{border:1px solid #34436d;border-radius:14px;overflow:hidden;}
+.stButton button,.stDownloadButton button{border-radius:11px;border:1px solid #526bd0;background:linear-gradient(110deg,#4933c8,#245fe5);color:#fff;font-weight:700;min-height:2.55rem;}
+.stButton button:hover,.stDownloadButton button:hover{border-color:#9a8bff;filter:brightness(1.12);color:#fff;}
+.stTextInput input,.stTextArea textarea,.stNumberInput input,.stDateInput input,
+.stSelectbox [data-baseweb="select"],.stMultiSelect [data-baseweb="select"]{
+ background:#121e3c;color:#f4f6ff;border:1px solid #3a4e82;border-radius:10px;
+}
+[data-testid="stExpander"]{background:#142143;border:1px solid #344777;border-radius:13px;}
+[data-testid="stAlert"]{border-radius:12px;}
+hr{border-color:#34436d;}
+.brand-header{display:flex;align-items:center;gap:16px;direction:ltr;margin:0 0 8px;padding:12px 18px;border:1px solid #344777;border-radius:18px;background:linear-gradient(110deg,#111b3cdd,#1c2250dd);box-shadow:0 12px 30px #03081755;}
+.brand-name{font-family:'Cairo',sans-serif;font-weight:800;font-size:clamp(1.7rem,4vw,2.7rem);color:#f6f7ff;letter-spacing:-1px;}
+.brand-tagline{color:#c1cafa;font-size:.95rem;margin-top:-4px;}
+.brand-accent{height:3px;border-radius:4px;background:linear-gradient(90deg,#2478ff,#7c4dff,#16d49a);margin:10px 0 22px;}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:8px 4px 16px;border-bottom:1px solid #293960;margin-bottom:14px;}
+.sidebar-brand-mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#2384ff,#713ff0);font-size:24px;font-weight:800;color:white;}
+.sidebar-brand-name{font-size:1.05rem;font-weight:800;direction:ltr;text-align:left;}
+.sidebar-status{display:flex;align-items:center;gap:8px;color:#9eafd9;font-size:.82rem;margin-top:2px;}
+.sidebar-status-dot{width:8px;height:8px;border-radius:50%;background:#19d995;box-shadow:0 0 10px #19d995;}
 </style>
 """
 
@@ -621,7 +638,19 @@ def main() -> None:
       <div><div class="brand-name">{__COMPANY_NAME__}</div><div class="brand-tagline">AI Business Operating System · v{APP_VERSION}</div></div>
     </div><div class="brand-accent"></div>
     """.replace("{__COMPANY_NAME__}", html.escape(preferences["company_name"])).replace("{APP_VERSION}", APP_VERSION), unsafe_allow_html=True)
-    page = st.sidebar.radio("القائمة", list(PAGES))
+    st.sidebar.markdown("""
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-mark">A</div>
+      <div><div class="sidebar-brand-name">AICompanyOS</div>
+      <div class="sidebar-status"><span class="sidebar-status-dot"></span> النظام جاهز للعمل</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    page = st.sidebar.radio("مساحة العمل", list(PAGES), label_visibility="collapsed")
+    st.sidebar.markdown(
+        f'<div style="margin-top:24px;padding:12px;border:1px solid #293960;border-radius:12px;'
+        f'background:#172342;color:#b9c8ee;font-size:.8rem;text-align:center">AICompanyOS · v{APP_VERSION}</div>',
+        unsafe_allow_html=True,
+    )
     PAGES[page](company)
 
 
