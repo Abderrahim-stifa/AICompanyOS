@@ -8,6 +8,7 @@ from .database import Database
 from .init_db import initialize_database
 from .logs import setup_logging
 from .settings import load_settings
+from .services.task_service import TaskService
 from .validator import (
     PROJECT_STATUSES,
     TASK_STATUSES,
@@ -29,49 +30,19 @@ class Company:
         setup_logging(self.settings.log_dir, self.settings.log_level)
         initialize_database(self.settings.db_path)
         self.db = Database(self.settings.db_path)
+        self.task_service = TaskService(self.db, self.settings.default_currency)
 
     # tasks
     def add_task(self, data: dict, user_name: str = "Admin") -> dict:
-        return self.db.add_task(validate_task(data, self.settings.default_currency), user_name=user_name)
+        return self.task_service.create_task(data, user_name=user_name)
 
-    def update_task(self, task_id, data: dict) -> dict:
-        task_id = clean_id(task_id, "task id")
-        status = data.get("status")
-        category = data.get("category")
-        agent = data.get("agent")
-        title = data.get("title")
-        description = data.get("description")
-        priority = data.get("priority")
-        source = data.get("source")
-        price = data.get("price")
-        currency = data.get("currency")
-        if status is not None:
-            status = clean_choice(status, "status", TASK_STATUSES)
-        if category is not None:
-            category = clean_text(category, "category", required=False, max_len=100)
-        if agent is not None:
-            agent = clean_text(agent, "agent", required=False, max_len=100)
-        if title is not None:
-            title = clean_text(title, "title", max_len=200)
-        if description is not None:
-            description = clean_text(description, "description", required=False, max_len=5000)
-        if priority is not None:
-            priority = clean_choice(priority, "priority", ("low", "normal", "high", "urgent"))
-        if source is not None:
-            source = clean_text(source, "source", required=False, max_len=200)
-        if price is not None:
-            price = clean_amount(price, "price")
-        if currency is not None:
-            currency = clean_currency(currency)
-        return self.db.update_task(
-            task_id, status=status, category=category, agent=agent,
-            title=title, description=description, priority=priority,
-            source=source, price=price, currency=currency,
-            user_name=data.get("user_name", "Admin"),
+    def update_task(self, task_id, data: dict, user_name: str | None = None) -> dict:
+        return self.task_service.update_task(
+            task_id, data, user_name=user_name or data.get("user_name", "Admin")
         )
 
     def delete_task(self, task_id, user_name: str = "Admin") -> None:
-        self.db.delete_task(clean_id(task_id, "task id"), user_name=user_name)
+        return self.task_service.delete_task(task_id, user_name=user_name)
 
     def assign_role_agent(self, task_id, agent_key: str, user_name: str = "Admin") -> dict:
         task_id = clean_id(task_id, "task id")
