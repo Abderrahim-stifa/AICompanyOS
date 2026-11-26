@@ -1,25 +1,36 @@
-"""Validated task operations backed by the transactional Database API."""
+"""Validated task use-cases with injectable persistence and logging adapters."""
 from core.services.base_service import BaseService
-from core.validator import (
-    TASK_STATUSES,
-    clean_amount,
-    clean_choice,
-    clean_currency,
-    clean_id,
-    clean_text,
-    validate_task,
-)
+from core.services.interfaces import ITaskService
+from core.repositories.task_repository import TaskRepository
+from core.validator import TASK_STATUSES, clean_amount, clean_choice, clean_currency, clean_id, clean_text, validate_task
 
 
-class TaskService(BaseService):
-    def __init__(self, database, default_currency="USD"):
-        super().__init__(database)
+class TaskService(BaseService, ITaskService):
+    def __init__(self, database=None, default_currency="USD", *, task_repository=None, activity_logger=None):
+        # Preserve Company(database, currency) while allowing injected adapters.
+        if task_repository is None:
+            if database is None:
+                raise ValueError("database or task_repository is required")
+            task_repository = TaskRepository(database)
+        self.task_repository = task_repository
         self.default_currency = default_currency
+        self.activity_logger = activity_logger
+        self.db = database or getattr(task_repository, "database", None)
+
+    def log_activity(self, action, entity_type, entity_id, user_name, details=""):
+        """Log auxiliary events; CRUD audit writes remain atomic in the repository."""
+        if self.activity_logger is not None:
+            return self.activity_logger.log(
+                action=action, entity_type=entity_type, entity_id=entity_id,
+                user_name=user_name, details=details,
+            )
+        if self.db is None:
+            raise RuntimeError("activity_logger is not configured")
+        return super().log(action, entity_type, entity_id, user_name, details)
 
     def create_task(self, data, user_name="Admin"):
         cleaned = validate_task(data, self.default_currency)
-        # Database writes CREATE audit data in the same SQLite transaction.
-        return self.db.add_task(cleaned, user_name=user_name)
+        return self.task_repository.create(cleaned, user_name=user_name)
 
     def update_task(self, task_id, data, user_name="Admin"):
         task_id = clean_id(task_id, "task id")
@@ -36,16 +47,17 @@ class TaskService(BaseService):
             "price": lambda value: clean_amount(value, "price"),
             "currency": lambda value: clean_currency(value),
         }
-        cleaned = {key: cleaner(data[key]) for key, cleaner in allowed.items() if key in data and data[key] is not None}
-        return self.db.update_task(task_id, user_name=user_name, **cleaned)
+        cleaned = {key: cleaner(data[key]) for key, cleaner in allowed.items()
+                   if key in data and data[key] is not None}
+        return self.task_repository.update(task_id, cleaned, user_name=user_name)
 
     def delete_task(self, task_id, user_name="Admin"):
-        return self.db.delete_task(clean_id(task_id, "task id"), user_name=user_name)
+        return self.task_repository.delete(clean_id(task_id, "task id"), user_name=user_name)
 
     def get_task(self, task_id):
-        return self.db.get_task(clean_id(task_id, "task id"))
+        return self.task_repository.get_by_id(clean_id(task_id, "task id"))
 
     def list_tasks(self, status=None):
         if status is not None:
             status = clean_choice(status, "status", TASK_STATUSES)
-        return self.db.list_tasks(status)
+        return self.task_repository.list(status)
