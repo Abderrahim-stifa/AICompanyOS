@@ -72,7 +72,7 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
                 last_activity TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS app_settings (
+            CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 company_name TEXT NOT NULL,
                 language TEXT NOT NULL DEFAULT 'ar',
