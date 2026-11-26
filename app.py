@@ -16,6 +16,7 @@ from core.agent_center import build_agent_overview
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
+from pages.logs_page import show_logs_page
 
 st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
 APP_VERSION = "0.1.0"
@@ -355,7 +356,7 @@ def page_tasks(company: Company) -> None:
                                  format_func=lambda v: v if v == "الكل" else ar(TASK_AR, v))
     table(company.db.list_tasks(None if status_filter == "الكل" else status_filter),
           {"id": "الرقم", "title": "المهمة", "source": "المصدر", "category": "التصنيف",
-           "price": "السعر", "currency": "العملة", "status": "الحالة", "agent": "وكيل Pipeline",
+           "priority": "الأولوية", "price": "السعر", "currency": "العملة", "status": "الحالة", "agent": "وكيل Pipeline",
            "role_agent_key": "وكيل الدور", "assigned_at": "وقت الإسناد", "completed_at": "وقت الإكمال"},
           {"status": TASK_AR, "agent": AGENT_AR})
 
@@ -365,10 +366,11 @@ def page_tasks(company: Company) -> None:
         description = st.text_area("الوصف (اختياري)")
         source = st.text_input("المصدر (مثال: خمسات)")
         price = st.number_input("السعر", min_value=0.0, step=1.0)
+        priority = st.selectbox("الأولوية", ["low", "normal", "high", "urgent"], index=1)
         if st.form_submit_button("حفظ"):
             try:
                 company.add_task({"title": title, "description": description,
-                                  "source": source, "price": price})
+                                  "source": source, "price": price, "priority": priority})
                 st.success("تمت إضافة المهمة")
                 st.rerun()
             except ValidationError as exc:
@@ -389,6 +391,12 @@ def page_tasks(company: Company) -> None:
                 f"{item['name']} — {item['role']}": item["agent_key"] for item in role_agents
             }}
             selected_task = next(task for task in tasks if task["id"] == options[choice])
+            new_title = st.text_input("عنوان المهمة", value=selected_task["title"], key="edit_task_title")
+            new_description = st.text_area("وصف المهمة", value=selected_task["description"], key="edit_task_description")
+            priority_values = ["low", "normal", "high", "urgent"]
+            new_priority = st.selectbox("الأولوية", priority_values,
+                                        index=priority_values.index(selected_task.get("priority", "normal")),
+                                        key="edit_task_priority")
             current_role_label = next(
                 (label for label, key in role_options.items()
                  if key == selected_task.get("role_agent_key")),
@@ -401,7 +409,7 @@ def page_tasks(company: Company) -> None:
             col1, col2 = st.columns(2)
             if col1.button("حفظ التحديث"):
                 task_id = options[choice]
-                data = {}
+                data = {"title": new_title, "description": new_description, "priority": new_priority}
                 if agent != "—":
                     data["agent"] = agent
                 if data:
@@ -526,6 +534,7 @@ PAGES = {
     "العملاء": page_clients,
     "المشاريع": page_projects,
     "المهام": page_tasks,
+    "سجل الأنشطة": show_logs_page,
     "الحسابات": page_finance,
     "الإعدادات": page_settings,
 }
