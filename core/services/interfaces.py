@@ -40,5 +40,5 @@ class ITaskRepository(ABC):
 
 class IActivityLogger(ABC):
     @abstractmethod
-    def log(self, action, entity_type, entity_id, user_name, details=""):
+    def log(self, action, entity_type, entity_id, user_name, details="", old_values=None, new_values=None):
         raise NotImplementedError
