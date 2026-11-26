@@ -23,7 +23,16 @@ class TaskService(BaseService, ITaskService):
 
     def create_task(self, data, user_name="Admin"):
         cleaned = validate_task(data, self.default_currency)
-        return self.task_repository.create(cleaned, user_name=user_name)
+        created = self.task_repository.create(cleaned, user_name=user_name)
+        # The SQLite repository writes the audit row in the same transaction.
+        # Other injected repositories delegate audit persistence to the logger.
+        if not isinstance(self.task_repository, TaskRepository) and self.activity_logger is not None:
+            self.activity_logger.log(
+                action="CREATE", entity_type="TASK", entity_id=created["id"],
+                user_name=user_name, details=created.get("title", ""),
+                old_values=None, new_values=created,
+            )
+        return created
 
     def update_task(self, task_id, data, user_name="Admin"):
         task_id = clean_id(task_id, "task id")
@@ -42,7 +51,17 @@ class TaskService(BaseService, ITaskService):
         }
         cleaned = {key: cleaner(data[key]) for key, cleaner in allowed.items()
                    if key in data and data[key] is not None}
-        return self.task_repository.update(task_id, cleaned, user_name=user_name)
+        old_task = None
+        if not isinstance(self.task_repository, TaskRepository):
+            old_task = self.task_repository.get_by_id(task_id)
+        updated = self.task_repository.update(task_id, cleaned, user_name=user_name)
+        if old_task is not None and self.activity_logger is not None:
+            self.activity_logger.log(
+                action="UPDATE", entity_type="TASK", entity_id=task_id,
+                user_name=user_name, details=updated.get("title", ""),
+                old_values=old_task, new_values=updated,
+            )
+        return updated
 
     def delete_task(self, task_id, user_name="Admin"):
         return self.task_repository.delete(clean_id(task_id, "task id"), user_name=user_name)
