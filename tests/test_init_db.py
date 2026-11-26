@@ -23,7 +23,7 @@ class InitDatabaseTests(unittest.TestCase):
                 pipeline_agents = conn.execute("SELECT name FROM agents").fetchall()
                 self.assertEqual(len(role_agents), 7)
                 self.assertEqual(len(pipeline_agents), 5)
-                self.assertEqual(conn.execute("SELECT COUNT(*) FROM app_settings").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0], 1)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM activity_logs").fetchone()[0], 0)
 
             config = json.loads(settings_path.read_text(encoding="utf-8"))
