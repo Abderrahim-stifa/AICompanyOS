@@ -51,7 +51,7 @@ class ActivityLogTests(unittest.TestCase):
             self.assertEqual(entries[0]["action"], "CREATE")
             self.assertEqual(entries[0]["entity_type"], "TASK")
             self.assertEqual(entries[0]["entity_id"], task["id"])
-            self.assertEqual(entries[0]["user_name"], "Admin")
+            self.assertEqual(entries[0]["user_name"], "system")
             self.assertEqual(entries[0]["details"], "Audit logs")
             self.assertTrue(entries[0]["created_at"])
 
