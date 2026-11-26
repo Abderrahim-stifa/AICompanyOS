@@ -21,7 +21,7 @@ def create_backup(db_path: str, backup_dir: str, keep: int = 10) -> Path:
 
     target_dir = Path(backup_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / f"{PREFIX}{datetime.now():%Y%m%d-%H%M%S}{SUFFIX}"
+    target = target_dir / f"{PREFIX}{datetime.now():%Y%m%d-%H%M%S-%f}{SUFFIX}"
 
     src = sqlite3.connect(db_path)
     dst = sqlite3.connect(target)
@@ -63,6 +63,7 @@ def restore_backup(backup_file: str, db_path: str) -> None:
         check.close()
 
     target = Path(db_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         safety = target.with_name(f"{target.stem}.before-restore{SUFFIX}")
         src = sqlite3.connect(db_path)
