@@ -14,6 +14,8 @@ from .validator import (
     clean_choice,
     clean_id,
     clean_text,
+    clean_amount,
+    clean_currency,
     validate_client,
     validate_ledger_entry,
     validate_project,
@@ -40,6 +42,9 @@ class Company:
         title = data.get("title")
         description = data.get("description")
         priority = data.get("priority")
+        source = data.get("source")
+        price = data.get("price")
+        currency = data.get("currency")
         if status is not None:
             status = clean_choice(status, "status", TASK_STATUSES)
         if category is not None:
@@ -52,9 +57,17 @@ class Company:
             description = clean_text(description, "description", required=False, max_len=5000)
         if priority is not None:
             priority = clean_choice(priority, "priority", ("low", "normal", "high", "urgent"))
+        if source is not None:
+            source = clean_text(source, "source", required=False, max_len=200)
+        if price is not None:
+            price = clean_amount(price, "price")
+        if currency is not None:
+            currency = clean_currency(currency)
         return self.db.update_task(
             task_id, status=status, category=category, agent=agent,
             title=title, description=description, priority=priority,
+            source=source, price=price, currency=currency,
+            user_name=data.get("user_name", "Admin"),
         )
 
     def delete_task(self, task_id, user_name: str = "Admin") -> None:
