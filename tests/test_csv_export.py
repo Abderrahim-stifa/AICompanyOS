@@ -29,5 +29,5 @@ def test_csv_exports_only_the_filtered_rows():
 def test_csv_preserves_arabic_and_utf8_bom():
     frame = pd.DataFrame([{"action": "إنشاء مهمة"}])
     data = audit_logs_to_csv(frame)
-    assert data.startswith(b"\\xef\\xbb\\xbf")
+    assert data.startswith(bytes([0xEF, 0xBB, 0xBF]))
     assert "إنشاء مهمة" in data.decode("utf-8-sig")
