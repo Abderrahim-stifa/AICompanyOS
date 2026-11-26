@@ -194,7 +194,7 @@ def save_ui_settings(values: dict, db_path: str | None = None) -> dict:
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = SETTINGS_FILE.with_suffix(".json.tmp")
     temporary.write_text(
-        json.dumps(normalized, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(normalized, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     temporary.replace(SETTINGS_FILE)
