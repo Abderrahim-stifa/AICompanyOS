@@ -30,6 +30,29 @@ class InitDatabaseTests(unittest.TestCase):
             self.assertEqual(config["company_name"], "AICompanyOS")
             self.assertTrue(config["dark_mode"])
 
+    def test_helpers_return_live_counts_and_record_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = str(Path(directory) / "company.sqlite3")
+            settings_path = Path(directory) / "settings.json"
+            with patch.object(init_db, "SETTINGS_FILE", settings_path):
+                init_db.initialize_database(db_path)
+                with sqlite3.connect(db_path) as conn:
+                    conn.execute(
+                        "INSERT INTO tasks (title, agent, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                        ("Prototype", "ceo", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+                    )
+                    conn.execute(
+                        "INSERT INTO activity (agent, action, created_at) VALUES (?, ?, ?)",
+                        ("ceo", "reviewed plan", "2026-01-02T00:00:00+00:00"),
+                    )
+                agents = init_db.list_role_agents(db_path)
+                ceo = next(agent for agent in agents if agent["agent_key"] == "ceo")
+                self.assertEqual(ceo["tasks_count"], 1)
+                self.assertEqual(ceo["last_activity"], "2026-01-02T00:00:00+00:00")
+                init_db.record_activity_log("bootstrap complete", db_path)
+                with sqlite3.connect(db_path) as conn:
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM activity_logs").fetchone()[0], 1)
+
     def test_existing_settings_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = str(Path(directory) / "company.sqlite3")
