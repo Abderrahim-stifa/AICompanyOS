@@ -37,13 +37,25 @@ class Company:
         status = data.get("status")
         category = data.get("category")
         agent = data.get("agent")
+        title = data.get("title")
+        description = data.get("description")
+        priority = data.get("priority")
         if status is not None:
             status = clean_choice(status, "status", TASK_STATUSES)
         if category is not None:
             category = clean_text(category, "category", required=False, max_len=100)
         if agent is not None:
             agent = clean_text(agent, "agent", required=False, max_len=100)
-        return self.db.update_task(task_id, status=status, category=category, agent=agent)
+        if title is not None:
+            title = clean_text(title, "title", max_len=200)
+        if description is not None:
+            description = clean_text(description, "description", required=False, max_len=5000)
+        if priority is not None:
+            priority = clean_choice(priority, "priority", ("low", "normal", "high", "urgent"))
+        return self.db.update_task(
+            task_id, status=status, category=category, agent=agent,
+            title=title, description=description, priority=priority,
+        )
 
     def delete_task(self, task_id) -> None:
         self.db.delete_task(clean_id(task_id, "task id"))
