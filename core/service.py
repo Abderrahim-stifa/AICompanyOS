@@ -29,8 +29,8 @@ class Company:
         self.db = Database(self.settings.db_path)
 
     # tasks
-    def add_task(self, data: dict) -> dict:
-        return self.db.add_task(validate_task(data, self.settings.default_currency))
+    def add_task(self, data: dict, user_name: str = "Admin") -> dict:
+        return self.db.add_task(validate_task(data, self.settings.default_currency), user_name=user_name)
 
     def update_task(self, task_id, data: dict) -> dict:
         task_id = clean_id(task_id, "task id")
@@ -57,8 +57,8 @@ class Company:
             title=title, description=description, priority=priority,
         )
 
-    def delete_task(self, task_id) -> None:
-        self.db.delete_task(clean_id(task_id, "task id"))
+    def delete_task(self, task_id, user_name: str = "Admin") -> None:
+        self.db.delete_task(clean_id(task_id, "task id"), user_name=user_name)
 
     def assign_role_agent(self, task_id, agent_key: str) -> dict:
         task_id = clean_id(task_id, "task id")
