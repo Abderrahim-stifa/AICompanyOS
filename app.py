@@ -11,6 +11,7 @@ import streamlit as st
 from core import agents as agents_mod
 from core import backup as backup_mod
 from core import ai_agents as role_agents
+from ai import AGENT_CLASSES
 from core.agent_center import build_agent_overview
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
@@ -160,6 +161,12 @@ def page_agents(company: Company) -> None:
 def page_role_agents(company: Company) -> None:
     st.header("مركز الوكلاء السبعة")
     st.caption("اختر دوراً واكتب المهمة للحصول على خطة عمل منظمة. النسخة الحالية محلية وقائمة على قواعد وقوالب، وليست نماذج LLM مستقلة.")
+    st.subheader("الوكلاء السبعة")
+    agent_cards = [agent_type().get_summary() for agent_type in AGENT_CLASSES]
+    card_rows = st.columns(3)
+    for index, agent in enumerate(agent_cards):
+        with card_rows[index % 3]:
+            st.info(f"**{agent['name']}**\\n\\nالدور: {agent['role']}\\n\\nالحالة الابتدائية: {agent['status']}")
     overview = build_agent_overview(company.db.list_tasks())
     active_count = sum(item["status"] == "active" for item in overview)
     ready_count = sum(item["status"] == "ready" for item in overview)
