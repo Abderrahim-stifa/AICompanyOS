@@ -83,6 +83,7 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 action TEXT NOT NULL,
+                details TEXT NOT NULL DEFAULT '',
                 created_at TEXT
             );
             """
