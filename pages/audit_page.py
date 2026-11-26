@@ -36,6 +36,21 @@ def filter_audit_logs(logs: pd.DataFrame, selected_user: str = "الكل",
     return filtered
 
 
+def paginate_audit_logs(logs: pd.DataFrame, page: int, page_size: int = 20) -> pd.DataFrame:
+    """Return one 1-based page from an already filtered audit frame."""
+    if page_size < 1:
+        raise ValueError("page_size must be positive")
+    total_pages = max(1, (len(logs) + page_size - 1) // page_size)
+    safe_page = min(max(int(page), 1), total_pages)
+    start = (safe_page - 1) * page_size
+    return logs.iloc[start:start + page_size].copy()
+
+
+def audit_logs_to_csv(logs: pd.DataFrame) -> bytes:
+    """Serialize audit rows as Excel-friendly UTF-8 CSV with BOM."""
+    return logs.to_csv(index=False).encode("utf-8-sig")
+
+
 def show_audit_page(company) -> None:
     st.title("سجل التعديلات")
     logs = company.db.list_system_logs(limit=1000)
@@ -67,11 +82,33 @@ def show_audit_page(company) -> None:
         return
 
     filtered_logs = filter_audit_logs(frame, selected_user, date_from, date_to)
-    st.metric("عدد السجلات", len(filtered_logs))
-    csv_data = filtered_logs.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("⬇️ تنزيل CSV", csv_data, "audit_log.csv", "text/csv")
+    total_records = len(filtered_logs)
+    st.metric("عدد السجلات", total_records)
+    page_size = 20
+    total_pages = max(1, (total_records + page_size - 1) // page_size)
+    page_col1, page_col2, page_col3 = st.columns([1, 2, 1])
+    with page_col2:
+        current_page = int(st.number_input(
+            "الصفحة", min_value=1, max_value=total_pages, value=1,
+            step=1, key="audit_current_page",
+        ))
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    page_logs = paginate_audit_logs(filtered_logs, current_page, page_size)
+    if total_records:
+        st.caption(
+            f"عرض السجلات {start + 1} - {min(end, total_records)} "
+            f"من أصل {total_records} · الصفحة {current_page}/{total_pages}"
+        )
+    else:
+        st.caption("لا توجد سجلات مطابقة للفلاتر.")
+    csv_data = audit_logs_to_csv(page_logs)
+    st.download_button(
+        "⬇️ تنزيل CSV", csv_data,
+        f"audit_page_{current_page}.csv", "text/csv",
+    )
 
-    for record_number, (_, row) in enumerate(filtered_logs.iterrows(), start=1):
+    for record_number, (_, row) in enumerate(page_logs.iterrows(), start=start + 1):
         label = (f"#{record_number} | {row.get('action', 'EVENT')} | "
                  f"{row.get('entity_type') or '—'} #{row.get('entity_id') or '—'}")
         with st.expander(label):
