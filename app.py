@@ -28,11 +28,27 @@ KIND_AR = {"income": "دخل", "expense": "مصروف"}
 
 RTL_CSS = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+:root { color-scheme: dark; }
 html, body, .stApp, [data-testid="stSidebar"], [data-testid="stMarkdownContainer"],
 .stTextInput, .stTextArea, .stSelectbox, .stNumberInput, .stRadio, .stAlert {
-    direction: rtl;
-    text-align: right;
+ direction:rtl; text-align:right; font-family:'Cairo',sans-serif;
 }
+.stApp {background:radial-gradient(ellipse at 85% 0%,#21152a 0%,#0a0c12 42%,#080a10 100%);color:#edf2fa;}
+[data-testid="stHeader"]{background:rgba(8,10,16,.92);}
+[data-testid="stSidebar"]{background:#101521;border-left:1px solid #2a263b;}
+[data-testid="stSidebar"] *{color:#edf2fa;}
+.block-container{padding-top:1.5rem;max-width:1500px;}
+h1,h2,h3,p,label{ text-align:right;color:#edf2fa;}
+[data-testid="stMetric"]{background:linear-gradient(145deg,#191827,#111724);border:1px solid #393149;padding:16px;border-radius:15px;direction:rtl;text-align:right;}
+[data-testid="stMetricLabel"]{color:#b7b2c6;}[data-testid="stMetricValue"]{color:#fff;}
+.stButton button{border-radius:10px;border:1px solid #59405b;background:#211a2b;color:#fff;}
+.stButton button:hover{border-color:#ff4d86;color:#fff;}
+hr{border-color:#302a3c;}
+.brand-header{display:flex;align-items:center;gap:18px;direction:ltr;margin:0 0 8px;}
+.brand-name{font-family:Georgia,serif;font-weight:800;font-size:clamp(2rem,5vw,3.4rem);color:#f3edf7;letter-spacing:-1.5px;}
+.brand-tagline{color:#b8adbf;font-size:1rem;margin-top:-8px;}
+.brand-accent{height:3px;border-radius:4px;background:linear-gradient(90deg,#ff4d86,#a78bfa,#f7bd4b);margin:12px 0 26px;}
 </style>
 """
 
@@ -370,7 +386,16 @@ PAGES = {
 
 def main() -> None:
     st.markdown(RTL_CSS, unsafe_allow_html=True)
-    st.title("🤖 AICompanyOS")
+    st.markdown("""
+    <div class="brand-header">
+      <svg width="76" height="76" viewBox="0 0 120 120" role="img" aria-label="AICompanyOS robot logo">
+        <defs><linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4d9ff"/><stop offset="1" stop-color="#a88bd0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff06a"/><stop offset="1" stop-color="#ffad22"/></linearGradient></defs>
+        <path d="M22 38Q22 20 42 20H78Q98 20 98 40V82Q98 101 78 101H42Q22 101 22 82Z" fill="url(#shell)" stroke="#ff4d86" stroke-width="3"/>
+        <rect x="31" y="39" width="58" height="31" rx="14" fill="#242044"/><ellipse cx="44" cy="54" rx="5" ry="9" fill="#35c7ff"/><ellipse cx="76" cy="54" rx="5" ry="9" fill="#35c7ff"/><rect x="45" y="80" width="30" height="9" rx="4.5" fill="#33254c"/><rect x="43" y="8" width="34" height="11" rx="5.5" fill="url(#gold)"/><path d="M18 42V76M102 42V76" stroke="#ff4d86" stroke-width="6" stroke-linecap="round"/><circle cx="17" cy="33" r="6" fill="#ff4d86"/><circle cx="103" cy="33" r="6" fill="#ff4d86"/>
+      </svg>
+      <div><div class="brand-name">AICompanyOS</div><div class="brand-tagline">AI Business Operating System</div></div>
+    </div><div class="brand-accent"></div>
+    """, unsafe_allow_html=True)
     company = get_company()
     page = st.sidebar.radio("القائمة", list(PAGES))
     PAGES[page](company)
