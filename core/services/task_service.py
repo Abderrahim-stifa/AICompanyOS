@@ -21,7 +21,7 @@ class TaskService(BaseService, ITaskService):
         """Log auxiliary events through the injected activity logger."""
         return super().log(action, entity_type, entity_id, user_name, details)
 
-    def create_task(self, data, user_name="Admin"):
+    def create_task(self, data, user_name="system"):
         cleaned = validate_task(data, self.default_currency)
         created = self.task_repository.create(cleaned, user_name=user_name)
         # The SQLite repository writes the audit row in the same transaction.
@@ -34,7 +34,7 @@ class TaskService(BaseService, ITaskService):
             )
         return created
 
-    def update_task(self, task_id, data, user_name="Admin"):
+    def update_task(self, task_id, data, user_name="system"):
         task_id = clean_id(task_id, "task id")
         if not isinstance(data, dict):
             raise ValueError("task must be an object")
@@ -63,7 +63,7 @@ class TaskService(BaseService, ITaskService):
             )
         return updated
 
-    def delete_task(self, task_id, user_name="Admin"):
+    def delete_task(self, task_id, user_name="system"):
         task_id = clean_id(task_id, "task id")
         old_task = None
         if not isinstance(self.task_repository, TaskRepository):
