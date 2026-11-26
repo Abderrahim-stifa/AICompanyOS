@@ -1,0 +1,82 @@
+name: AICompanyOS Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build AICompanyOS
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.12"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Display Python Version
+        run: python --version
+
+      - name: Upgrade Pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install Requirements
+        run: |
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+      - name: Check Project Structure
+        run: |
+          echo "Checking AICompanyOS project structure..."
+          test -f app.py
+          test -f cli.py
+          test -f requirements.txt
+          test -d core
+          test -d assets
+          test -f assets/aicompanyos-logo.svg
+          echo "Project structure OK"
+
+      - name: Check Core Files
+        run: |
+          test -f core/__init__.py
+          test -f core/agents.py
+          test -f core/database.py
+          test -f core/settings.py
+          test -f core/validator.py
+          test -f core/logs.py
+          test -f core/backup.py
+          test -f core/service.py
+          echo "Core files OK"
+
+      - name: Validate Python Files
+        run: |
+          python -m compileall -q app.py cli.py core
+          echo "Python syntax validation OK"
+
+      - name: Verify Installed Dependencies
+        run: python -m pip check
+
+      - name: Success
+        run: |
+          echo "=================================="
+          echo " AICompanyOS Build Successful"
+          echo "=================================="
