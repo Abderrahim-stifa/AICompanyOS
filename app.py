@@ -20,7 +20,7 @@ from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, Validati
 from pages.logs_page import show_logs_page
 
 st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.2"
 
 TASK_AR = {
     "found": "تم العثور عليها", "classified": "مصنّفة", "assigned": "مُسندة",
