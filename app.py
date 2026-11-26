@@ -351,98 +351,132 @@ def page_projects(company: Company) -> None:
 
 
 def page_tasks(company: Company) -> None:
-    st.header("✅ المهام")
-    status_filter = st.selectbox("تصفية حسب الحالة", ["الكل", *TASK_STATUSES],
-                                 format_func=lambda v: v if v == "الكل" else ar(TASK_AR, v))
-    table(company.db.list_tasks(None if status_filter == "الكل" else status_filter),
-          {"id": "الرقم", "title": "المهمة", "source": "المصدر", "category": "التصنيف",
-           "priority": "الأولوية", "price": "السعر", "currency": "العملة", "status": "الحالة", "agent": "وكيل Pipeline",
-           "role_agent_key": "وكيل الدور", "assigned_at": "وقت الإسناد", "completed_at": "وقت الإكمال"},
-          {"status": TASK_AR, "agent": AGENT_AR})
-
-    with st.form("add_task", clear_on_submit=True):
-        st.subheader("إضافة مهمة")
-        title = st.text_input("عنوان المهمة")
-        description = st.text_area("الوصف (اختياري)")
-        source = st.text_input("المصدر (مثال: خمسات)")
-        price = st.number_input("السعر", min_value=0.0, step=1.0)
-        priority = st.selectbox("الأولوية", ["low", "normal", "high", "urgent"], index=1)
-        if st.form_submit_button("حفظ"):
-            try:
-                company.add_task({"title": title, "description": description,
-                                  "source": source, "price": price, "priority": priority})
-                st.success("تمت إضافة المهمة")
-                st.rerun()
-            except ValidationError as exc:
-                fail(exc)
+    st.header("✅ إدارة المهام")
+    user_name = st.text_input(
+        "المستخدم الحالي لتسجيل النشاط",
+        value=st.session_state.get("audit_user", "Admin"),
+        key="audit_user_input",
+        help="لا توجد مصادقة مستخدمين بعد؛ هذه الهوية تسجل اسم المنفذ في سجل التدقيق.",
+    ).strip() or "Admin"
+    st.session_state["audit_user"] = user_name
 
     tasks = company.db.list_tasks()
-    if tasks:
-        with st.expander("تحديث مهمة"):
-            options = {f"{t['id']} — {t['title']}": t["id"] for t in tasks}
-            choice = st.selectbox("اختر المهمة", list(options), key="edit_task")
-            new_status = st.selectbox("الحالة الجديدة", TASK_STATUSES,
-                                      format_func=lambda v: ar(TASK_AR, v), key="edit_task_status")
-            agents = [a["name"] for a in company.db.list_agents()]
-            agent = st.selectbox("إسناد إلى وكيل Pipeline (النظام القديم)", ["—", *agents],
-                                 format_func=lambda v: v if v == "—" else ar(AGENT_AR, v))
-            role_agents = company.db.list_role_agents()
-            role_options = {"— بدون تغيير —": None, **{
-                f"{item['name']} — {item['role']}": item["agent_key"] for item in role_agents
-            }}
-            selected_task = next(task for task in tasks if task["id"] == options[choice])
-            new_title = st.text_input("عنوان المهمة", value=selected_task["title"], key="edit_task_title")
-            new_description = st.text_area("وصف المهمة", value=selected_task["description"], key="edit_task_description")
-            priority_values = ["low", "normal", "high", "urgent"]
-            new_priority = st.selectbox("الأولوية", priority_values,
-                                        index=priority_values.index(selected_task.get("priority", "normal")),
-                                        key="edit_task_priority")
-            current_role_label = next(
-                (label for label, key in role_options.items()
-                 if key == selected_task.get("role_agent_key")),
-                "— بدون تغيير —",
-            )
-            role_choice = st.selectbox(
-                "إسناد إلى وكيل الدور", list(role_options),
-                index=list(role_options).index(current_role_label), key="task_role_agent",
-            )
-            col1, col2 = st.columns(2)
-            if col1.button("حفظ التحديث"):
-                task_id = options[choice]
-                data = {"title": new_title, "description": new_description, "priority": new_priority}
-                if agent != "—":
-                    data["agent"] = agent
-                if data:
-                    company.update_task(task_id, data)
-                if role_options[role_choice]:
-                    company.assign_role_agent(task_id, role_options[role_choice])
-                company.set_task_status(task_id, new_status)
-                st.rerun()
-            sure = col2.checkbox("أؤكد الحذف", key="del_task_ok")
-            if col2.button("حذف المهمة") and sure:
-                company.delete_task(options[choice])
-                st.rerun()
+    agents = company.db.list_agents()
+    role_agents = company.db.list_role_agents()
+    pipeline_names = [item["name"] for item in agents]
+    role_labels = {"— بدون إسناد —": None, **{
+        f"{item['name']} — {item['role']}": item["agent_key"] for item in role_agents
+    }}
 
-        assigned_tasks = [task for task in tasks if task.get("role_agent_key")]
-        if assigned_tasks:
-            st.subheader("نتائج تنفيذ الوكلاء")
-            task_options = {f"{task['id']} — {task['title']}": task for task in assigned_tasks}
-            result_choice = st.selectbox("المهمة", list(task_options), key="task_result_target")
-            selected_task = task_options[result_choice]
-            st.caption(f"الوكيل: {selected_task['role_agent_key']} · الحالة: {ar(TASK_AR, selected_task['status'])}")
-            if selected_task.get("result"):
-                st.markdown("**النتيجة المحفوظة**")
-                st.write(selected_task["result"])
-            with st.form("save_task_result"):
-                result_text = st.text_area("نتيجة التنفيذ أو تقرير الوكيل", height=140)
-                if st.form_submit_button("حفظ النتيجة وإكمال المهمة"):
+    st.subheader("جميع المهام")
+    status_filter = st.selectbox(
+        "تصفية حسب الحالة", ["الكل", *TASK_STATUSES],
+        format_func=lambda value: value if value == "الكل" else ar(TASK_AR, value),
+        key="tasks_status_filter",
+    )
+    visible_tasks = [item for item in tasks if status_filter == "الكل" or item["status"] == status_filter]
+    table(visible_tasks, {
+        "id": "الرقم", "title": "المهمة", "description": "الوصف",
+        "priority": "الأولوية", "status": "الحالة", "agent": "وكيل Pipeline",
+        "role_agent_key": "وكيل الدور", "created_at": "تاريخ الإنشاء",
+    }, {"status": TASK_AR, "agent": AGENT_AR})
+
+    tab_create, tab_update, tab_delete = st.tabs(["إضافة مهمة", "تعديل / إسناد", "حذف مهمة"])
+    with tab_create:
+        with st.form("task_create_form", clear_on_submit=True):
+            title = st.text_input("عنوان المهمة", max_chars=200)
+            description = st.text_area("الوصف", max_chars=5000)
+            source = st.text_input("المصدر")
+            category = st.text_input("التصنيف")
+            price = st.number_input("القيمة", min_value=0.0, step=1.0)
+            priority = st.selectbox("الأولوية", ["low", "normal", "high", "urgent"], index=1)
+            pipeline_agent = st.selectbox("وكيل Pipeline", ["— بدون إسناد —", *pipeline_names])
+            if st.form_submit_button("إنشاء المهمة"):
+                try:
+                    created = company.add_task({
+                        "title": title, "description": description, "source": source,
+                        "category": category, "price": price,
+                        "currency": company.settings.default_currency,
+                        "priority": priority,
+                    }, user_name=user_name)
+                    if pipeline_agent != "— بدون إسناد —":
+                        company.update_task(created["id"], {
+                            "agent": pipeline_agent, "user_name": user_name,
+                        })
+                    st.success(f"تم إنشاء المهمة رقم {created['id']}")
+                    st.rerun()
+                except (ValidationError, LookupError, ValueError) as exc:
+                    fail(exc)
+
+    with tab_update:
+        if not tasks:
+            st.info("لا توجد مهام لتعديلها.")
+        else:
+            task_options = {f"#{item['id']} — {item['title']}": item["id"] for item in tasks}
+            selected_label = st.selectbox("اختر المهمة", list(task_options), key="task_edit_choice")
+            selected = next(item for item in tasks if item["id"] == task_options[selected_label])
+            with st.form("task_update_form"):
+                edit_title = st.text_input("العنوان", value=selected["title"], max_chars=200)
+                edit_description = st.text_area("الوصف", value=selected["description"], max_chars=5000)
+                edit_source = st.text_input("المصدر", value=selected["source"])
+                edit_category = st.text_input("التصنيف", value=selected["category"])
+                edit_price = st.number_input("القيمة", min_value=0.0, value=float(selected["price"]), step=1.0)
+                priorities = ["low", "normal", "high", "urgent"]
+                edit_priority = st.selectbox("الأولوية", priorities,
+                    index=priorities.index(selected.get("priority", "normal")))
+                edit_status = st.selectbox("الحالة", TASK_STATUSES,
+                    index=TASK_STATUSES.index(selected["status"]),
+                    format_func=lambda value: ar(TASK_AR, value))
+                current_pipeline = selected.get("agent") or "— بدون إسناد —"
+                pipeline_index = (["— بدون إسناد —", *pipeline_names].index(current_pipeline)
+                                  if current_pipeline in ["— بدون إسناد —", *pipeline_names] else 0)
+                edit_pipeline = st.selectbox("وكيل Pipeline", ["— بدون إسناد —", *pipeline_names],
+                                             index=pipeline_index)
+                current_role = next((label for label, key in role_labels.items()
+                                     if key == selected.get("role_agent_key")), "— بدون إسناد —")
+                edit_role = st.selectbox("وكيل الدور", list(role_labels),
+                                         index=list(role_labels).index(current_role))
+                if st.form_submit_button("حفظ التعديلات"):
                     try:
-                        company.save_task_result(selected_task["id"], result_text)
-                        st.success("تم حفظ النتيجة وإكمال المهمة.")
+                        company.update_task(selected["id"], {
+                            "title": edit_title, "description": edit_description,
+                            "source": edit_source, "category": edit_category,
+                            "price": edit_price, "priority": edit_priority,
+                            "status": edit_status,
+                            "agent": "" if edit_pipeline == "— بدون إسناد —" else edit_pipeline,
+                            "user_name": user_name,
+                        })
+                        role_key = role_labels[edit_role]
+                        if role_key and role_key != selected.get("role_agent_key"):
+                            company.assign_role_agent(selected["id"], role_key)
+                        elif not role_key and selected.get("role_agent_key"):
+                            with company.db.connect() as conn:
+                                conn.execute(
+                                    "UPDATE tasks SET role_agent_key = NULL, updated_at = ? WHERE id = ?",
+                                    (__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(timespec="seconds"),
+                                     selected["id"]),
+                                )
+                        st.success("تم تحديث المهمة.")
                         st.rerun()
-                    except ValidationError as exc:
+                    except (ValidationError, LookupError, ValueError) as exc:
                         fail(exc)
 
+    with tab_delete:
+        if not tasks:
+            st.info("لا توجد مهام لحذفها.")
+        else:
+            delete_options = {f"#{item['id']} — {item['title']}": item["id"] for item in tasks}
+            delete_label = st.selectbox("المهمة المراد حذفها", list(delete_options), key="task_delete_choice")
+            confirm_delete = st.checkbox("أؤكد أنني أريد حذف هذه المهمة", key="task_delete_confirm")
+            if st.button("حذف المهمة نهائياً", type="primary", disabled=not confirm_delete):
+                try:
+                    company.delete_task(delete_options[delete_label], user_name=user_name)
+                    st.success("تم حذف المهمة وتسجيل العملية.")
+                    st.rerun()
+                except (LookupError, ValueError) as exc:
+                    fail(exc)
+
+    st.caption("كل عمليات الإنشاء والتعديل والحذف تسجل المستخدم والكيان ورقم المهمة في سجل الأنشطة.")
 
 def page_finance(company: Company) -> None:
     st.header("💰 الحسابات")
