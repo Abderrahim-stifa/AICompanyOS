@@ -46,7 +46,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 def log_activity(database, action: str, entity_type: str, entity_id: int,
-                 user_name: str, details: str = "") -> None:
+                 user_name: str, details: str = "", old_values=None, new_values=None) -> None:
     """Persist an audit event through the configured Database instance.
 
     Passing the database instance keeps audit writes on the same SQLite file
@@ -62,6 +62,8 @@ def log_activity(database, action: str, entity_type: str, entity_id: int,
         entity_type=entity_type,
         entity_id=entity_id,
         user_name=user_name.strip(),
+        old_values=old_values,
+        new_values=new_values,
     )
 
 
@@ -71,8 +73,10 @@ class DatabaseActivityLogger(IActivityLogger):
     def __init__(self, database):
         self.database = database
 
-    def log(self, action, entity_type, entity_id, user_name, details=""):
+    def log(self, action, entity_type, entity_id, user_name, details="",
+            old_values=None, new_values=None):
         return log_activity(
             self.database, action=action, entity_type=entity_type,
             entity_id=entity_id, user_name=user_name, details=details,
+            old_values=old_values, new_values=new_values,
         )
