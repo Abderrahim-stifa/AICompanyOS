@@ -13,6 +13,7 @@ from core import backup as backup_mod
 from core import ai_agents as role_agents
 from ai import AGENT_CLASSES
 from core.agent_center import build_agent_overview
+from core.init_db import list_role_agents
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 
@@ -162,11 +163,18 @@ def page_role_agents(company: Company) -> None:
     st.header("مركز الوكلاء السبعة")
     st.caption("اختر دوراً واكتب المهمة للحصول على خطة عمل منظمة. النسخة الحالية محلية وقائمة على قواعد وقوالب، وليست نماذج LLM مستقلة.")
     st.subheader("الوكلاء السبعة")
-    agent_cards = [agent_type().get_summary() for agent_type in AGENT_CLASSES]
+    agent_cards = list_role_agents(company.settings.db_path)
     card_rows = st.columns(3)
     for index, agent in enumerate(agent_cards):
         with card_rows[index % 3]:
-            st.info(f"**{agent['name']}**\n\nالدور: {agent['role']}\n\nالحالة الابتدائية: {agent['status']}")
+            last_activity = agent["last_activity"] or "لا يوجد نشاط مسجل"
+            st.info(
+                f"**{agent['name']}**\\n\\n"
+                f"الدور: {agent['role']}\\n\\n"
+                f"الحالة: {agent['status']}\\n\\n"
+                f"عدد المهام: {agent['tasks_count']}\\n\\n"
+                f"آخر نشاط: {last_activity}"
+            )
     overview = build_agent_overview(company.db.list_tasks())
     active_count = sum(item["status"] == "active" for item in overview)
     ready_count = sum(item["status"] == "ready" for item in overview)
