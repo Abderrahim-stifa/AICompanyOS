@@ -12,20 +12,13 @@ class TaskService(BaseService, ITaskService):
             if database is None:
                 raise ValueError("database or task_repository is required")
             task_repository = TaskRepository(database)
+        resolved_database = database or getattr(task_repository, "database", None)
+        super().__init__(resolved_database, activity_logger=activity_logger)
         self.task_repository = task_repository
         self.default_currency = default_currency
-        self.activity_logger = activity_logger
-        self.db = database or getattr(task_repository, "database", None)
 
     def log_activity(self, action, entity_type, entity_id, user_name, details=""):
-        """Log auxiliary events; CRUD audit writes remain atomic in the repository."""
-        if self.activity_logger is not None:
-            return self.activity_logger.log(
-                action=action, entity_type=entity_type, entity_id=entity_id,
-                user_name=user_name, details=details,
-            )
-        if self.db is None:
-            raise RuntimeError("activity_logger is not configured")
+        """Log auxiliary events through the injected activity logger."""
         return super().log(action, entity_type, entity_id, user_name, details)
 
     def create_task(self, data, user_name="Admin"):
