@@ -122,7 +122,12 @@ def list_role_agents(db_path: str | None = None) -> list[dict]:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT r.agent_key, r.name, r.role, r.status,
+            SELECT r.agent_key, r.name, r.role,
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM tasks active_task
+                       WHERE active_task.agent = r.agent_key
+                         AND active_task.status IN ('assigned', 'in_progress')
+                   ) THEN 'نشط' ELSE 'جاهز' END AS status,
                    (SELECT COUNT(*) FROM tasks t WHERE t.agent = r.agent_key) AS tasks_count,
                    (SELECT MAX(a.created_at) FROM activity a
                     WHERE a.agent = r.agent_key) AS last_activity
