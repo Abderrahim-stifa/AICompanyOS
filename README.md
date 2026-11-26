@@ -245,3 +245,12 @@ execution by the seven role agents.
 ## v0.3.4 — Mock tests and audit snapshots
 
 أضيفت اختبارات Mock لعزل `TaskService` والتحقق من تفويض العمليات إلى Repository ومن إمكانية حقن Activity Logger. وسّع مخطط `activity_logs` بإضافة `old_values` و`new_values` عبر ترحيل SQLite إضافي يحافظ على السجلات السابقة. تحفظ عملية تعديل المهمة لقطة الحالة قبل التعديل وبعده داخل نفس transaction التي تحفظ التعديل وسجل التدقيق؛ كما يحتفظ سجل الحذف بلقطة المهمة المحذوفة. واجهة تعديل وحذف المهام وتأكيد الحذف عبر `st.dialog` موجودة في قسم المهام داخل `app.py`.
+
+
+## v0.3.5 — Audit & User Context
+
+- إضافة `core/auth_context.py` لتوحيد اسم المشغّل الحالي داخل Streamlit session، مع قيمة افتراضية `system` والتحقق من الاسم.
+- إزالة القيمة الافتراضية الصلبة `Admin` من طبقات Task Service وRepository وCompany وSQLite.
+- إضافة `pages/audit_page.py` لعرض سجل التعديلات، المستخدم، التاريخ، والقيم السابقة والجديدة باستعمال واجهة قاعدة البيانات الحالية.
+- إضافة اختبارات فشل Repository عند تعديل أو حذف مهمة غير موجودة، واختبار تمرير خطأ التحديث عبر Service Layer، واختبارات CurrentUser.
+- ملاحظة أمنية: CurrentUser يوفر سياق اسم مشغّل فقط، ولا يمثل مصادقة أو صلاحيات مستخدمين.
