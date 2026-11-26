@@ -374,6 +374,7 @@ def page_tasks(company: Company) -> None:
     user_name = st.text_input(
         "المستخدم الحالي",
         value=CurrentUser.get_username(),
+        max_chars=100,
         key="audit_user_input",
         help="اسم المشغّل الحالي الذي سيظهر في سجل التدقيق؛ هذا ليس نظام مصادقة.",
     ).strip() or "system"
