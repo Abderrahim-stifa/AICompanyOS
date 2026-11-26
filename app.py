@@ -441,8 +441,8 @@ def page_tasks(company: Company) -> None:
                         company.update_task(selected["id"], {
                             "title": edit_title, "description": edit_description,
                             "source": edit_source, "category": edit_category,
-                            "price": edit_price, "priority": edit_priority,
-                            "status": edit_status,
+                            "price": edit_price, "currency": company.settings.default_currency,
+                            "priority": edit_priority, "status": edit_status,
                             "agent": "" if edit_pipeline == "— بدون إسناد —" else edit_pipeline,
                             "user_name": user_name,
                         })
