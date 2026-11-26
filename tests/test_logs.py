@@ -7,6 +7,32 @@ from core.database import Database
 
 
 class ActivityLogTests(unittest.TestCase):
+    def test_legacy_activity_log_schema_is_migrated_without_losing_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "legacy.db")
+            import sqlite3
+            with sqlite3.connect(path) as conn:
+                conn.execute("""
+                    CREATE TABLE activity_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        action TEXT NOT NULL,
+                        details TEXT NOT NULL DEFAULT '',
+                        created_at TEXT
+                    )
+                """)
+                conn.execute(
+                    "INSERT INTO activity_logs (action, details, created_at) VALUES (?, ?, ?)",
+                    ("OLD_EVENT", "preserve me", "2026-01-01T00:00:00"),
+                )
+            db = Database(path)
+            db.init()
+            old = db.list_system_logs()[0]
+            self.assertEqual(old["action"], "OLD_EVENT")
+            self.assertEqual(old["details"], "preserve me")
+            self.assertEqual(old["user_name"], "system")
+            self.assertIsNone(old["entity_type"])
+            self.assertIsNone(old["entity_id"])
+
     def test_log_table_and_task_events(self):
         with tempfile.TemporaryDirectory() as directory:
             db = Database(str(Path(directory) / "company.db"))
