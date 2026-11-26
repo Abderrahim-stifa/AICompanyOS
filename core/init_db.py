@@ -95,7 +95,7 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
             )
         config = _ensure_settings_file()
         conn.execute(
-            """INSERT OR IGNORE INTO app_settings
+            """INSERT OR IGNORE INTO settings
                (id, company_name, language, dark_mode, theme)
                VALUES (1, ?, ?, ?, ?)""",
             (
