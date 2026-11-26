@@ -385,26 +385,30 @@ def page_tasks(company: Company) -> None:
             agent = st.selectbox("إسناد إلى وكيل Pipeline (النظام القديم)", ["—", *agents],
                                  format_func=lambda v: v if v == "—" else ar(AGENT_AR, v))
             role_agents = company.db.list_role_agents()
-            role_options = {"— بدون إسناد —": None, **{
+            role_options = {"— بدون تغيير —": None, **{
                 f"{item['name']} — {item['role']}": item["agent_key"] for item in role_agents
             }}
-            role_choice = st.selectbox("إسناد إلى وكيل الدور", list(role_options), key="task_role_agent")
+            selected_task = next(task for task in tasks if task["id"] == options[choice])
+            current_role_label = next(
+                (label for label, key in role_options.items()
+                 if key == selected_task.get("role_agent_key")),
+                "— بدون تغيير —",
+            )
+            role_choice = st.selectbox(
+                "إسناد إلى وكيل الدور", list(role_options),
+                index=list(role_options).index(current_role_label), key="task_role_agent",
+            )
             col1, col2 = st.columns(2)
             if col1.button("حفظ التحديث"):
                 task_id = options[choice]
-                data = {"status": new_status}
+                data = {}
                 if agent != "—":
                     data["agent"] = agent
-                company.update_task(task_id, data)
+                if data:
+                    company.update_task(task_id, data)
                 if role_options[role_choice]:
                     company.assign_role_agent(task_id, role_options[role_choice])
-                elif role_agents:
-                    # An explicit no-agent selection clears a previous role assignment.
-                    with company.db.connect() as conn:
-                        conn.execute(
-                            "UPDATE tasks SET role_agent_key = NULL, assigned_at = NULL WHERE id = ?",
-                            (task_id,),
-                        )
+                company.set_task_status(task_id, new_status)
                 st.rerun()
             sure = col2.checkbox("أؤكد الحذف", key="del_task_ok")
             if col2.button("حذف المهمة") and sure:
