@@ -1,22 +1,66 @@
+<div align="center">
+
+<img src="assets/aicompanyos-logo.svg" width="116" alt="AICompanyOS robot logo">
+
 # AICompanyOS
 
-Free Open Source AI Business Operating System.
+### AI Business Operating System
 
-An Arabic (RTL) dashboard to run a small company of AI agents with a human supervisor:
-clients, projects, tasks, accounting, backups. SQLite storage, no paid services.
+**منصة محلية مفتوحة المصدر لإدارة الأعمال والمهام والعملاء عبر وكلاء قابلين للتشغيل محلياً.**
 
-## Run the dashboard
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![SQLite](https://img.shields.io/badge/SQLite-Local%20Database-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![Status](https://img.shields.io/badge/Status-v0.1-ff4d86)](#خارطة-الطريق)
+[![Arabic RTL](https://img.shields.io/badge/Interface-Arabic%20RTL-a78bfa)](#المزايا)
+
+</div>
+
+---
+
+## نبذة عن المشروع
+
+AICompanyOS هو نظام مجاني ومفتوح المصدر لإدارة عمليات شركة صغيرة من خلال لوحة عربية موحدة. يضم إدارة العملاء والمشاريع والمهام والحسابات والنسخ الاحتياطي، مع وكلاء قائمين على قواعد محلية وقابلين للتطوير مستقبلاً.
+
+يعتمد التخزين على SQLite، ويمكن تشغيل النظام محلياً دون اشتراكات أو مفاتيح API.
+
+## المزايا الحالية
+
+- لوحة تحكم بمؤشرات العملاء والمشاريع والمهام والوكلاء.
+- مركز وكلاء لتشغيل مسار التصنيف والإسناد والمحاسبة.
+- إدارة العملاء والمشاريع والمهام.
+- تسجيل الدخل والمصروفات وعرض الملخص المالي.
+- سجل نشاط للعمليات.
+- نسخ احتياطي وإدخال بيانات تجريبية.
+- واجهة عربية RTL وسمة ليلية وهوية AICompanyOS.
+- واجهة سطر أوامر وJSON API محلية.
+
+## الوكلاء
+
+| الوكيل | الوظيفة |
+|---|---|
+| manager | إدارة المهام وإسنادها للمنفّذ |
+| finder | مكوّن البحث عن المهام |
+| classifier | تصنيف المهام أو رفض ما يطابق قواعد الحظر |
+| executor | الوكيل المنفّذ ضمن دورة العمل |
+| accountant | تسجيل دخل المهام المكتملة بعد تأكيد استلام المبلغ |
+
+الوكلاء الحاليون قائمون على قواعد محلية (Rule-based)، وليست نماذج لغوية مستقلة. يظل قرار قبول المهمة وتنفيذها تحت إشراف المستخدم.
+
+## التشغيل المحلي
+
+يتطلب Python 3.10 أو أحدث.
 
 ```bash
 python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Then open http://localhost:8501. Use **الإعدادات → إدخال بيانات تجريبية** to load demo data.
+ثم افتح http://localhost:8501.
 
-Pages: لوحة التحكم (dashboard with Plotly charts) · الوكلاء · العملاء · المشاريع · المهام · الحسابات · الإعدادات (backup, demo data).
+لإضافة بيانات تجريبية، انتقل إلى **الإعدادات ← إدخال بيانات تجريبية**.
 
-## Command line and JSON API (no extra packages)
+## سطر الأوامر وواجهة JSON API
 
 ```bash
 python cli.py init
@@ -25,62 +69,58 @@ python cli.py set-status 1 classified --category translation --agent classifier
 python cli.py ledger income 5 --task 1 --note "client payment"
 python cli.py summary
 python cli.py backup
-python cli.py serve          # JSON API on http://127.0.0.1:8000
+python cli.py serve
 ```
 
-## Agents
+تعمل واجهة API على `127.0.0.1:8000`. يتطلب تعريضها لعنوان عام تعيين `AICOS_API_KEY`؛ ويرفض الخادم الربط العام دون مفتاح.
 
-Rule-based agents that run offline and cost nothing (`core/agents.py`):
+## التقنيات
 
-| Agent | What it does |
+- Python
+- Streamlit
+- SQLite
+- Pandas
+- Plotly
+
+## هيكل المشروع
+
+| المسار | الغرض |
 |---|---|
-| classifier | `found` → `classified` with a category, or `rejected` if the task contains blocked content |
-| manager | `classified` → `assigned` to the executor, waiting for the human supervisor |
-| accountant | records income for `done` tasks, once per task (run it after confirming payment) |
+| `app.py` | لوحة Streamlit |
+| `cli.py` | سطر الأوامر وHTTP API |
+| `core/service.py` | منطق الأعمال المشترك |
+| `core/database.py` | قاعدة بيانات SQLite |
+| `core/agents.py` | قواعد الوكلاء ومسارات التشغيل |
+| `core/backup.py` | النسخ الاحتياطي والاستعادة |
+| `core/validator.py` | التحقق من المدخلات |
+| `core/settings.py` | إعدادات النظام |
+| `core/logs.py` | سجلات النشاط والتشغيل |
+| `.streamlit/config.toml` | إعدادات المظهر الليلي |
 
-Run them from the **الوكلاء** page, or with `python cli.py run-agents` and `python cli.py run-accountant`.
-Every action is saved in the activity log. The keyword rules are a starting point, not a legal
-filter: the human supervisor decides what is accepted and executed.
+## خارطة الطريق
 
-## Task lifecycle
-
-`found` → `classified` → `assigned` → `in_progress` → `done` (or `rejected`)
-
-Default agents: manager, finder, classifier, executor, accountant.
-
-## Layout
-
-| Path | Purpose |
+| الإصدار | النطاق |
 |---|---|
-| `app.py` | Streamlit dashboard |
-| `cli.py` | Command line and HTTP API |
-| `core/service.py` | Business logic shared by the dashboard, CLI and API |
-| `core/database.py` | SQLite: clients, projects, tasks, agents, ledger |
-| `core/validator.py` | Input validation |
-| `core/settings.py` | Settings (defaults, `data/settings.json`, `AICOS_*` env vars) |
-| `core/logs.py` | Console and rotating file logs |
-| `core/backup.py` | Safe backup, pruning and restore |
-| `.streamlit/config.toml` | Dark theme |
+| v0.1 | لوحة التحكم ومركز الوكلاء والبنية المحلية |
+| v0.2 | توسيع إدارة المهام وتدفقات الوكلاء |
+| v0.3 | تطوير CRM وإدارة المشاريع |
+| v0.4 | التقارير والإحصائيات |
+| v0.5 | المحاسبة الأساسية |
+| v1.0 | الاستقرار وإدارة المستخدمين والنسخ الاحتياطي وسجلات النشاط |
+| v2.0 | تكامل Ollama وQwen ووكلاء LLM محليين |
 
-## HTTP API (`python cli.py serve`)
+## الهوية البصرية
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Liveness check |
-| GET / POST | `/tasks` | List (`?status=done`) or create a task |
-| GET / PATCH | `/tasks/<id>` | Read or update `status`, `category`, `agent` |
-| GET | `/agents` | List agents |
-| GET / POST | `/ledger` | List or record income/expense |
-| GET | `/summary` | Totals per currency and task counts |
+تعتمد الواجهة على خلفية داكنة مع تدرجات وردية وبنفسجية ولمسات ذهبية، وشعار روبوت مخصص. تُستخدم الهوية في رأس لوحة التحكم وملف README.
 
-The server listens on `127.0.0.1` only. To expose it, set `AICOS_API_KEY`; clients then send it
-in the `X-API-Key` header. The server refuses to bind to a public address without a key.
+## الترخيص
 
-## Settings
+لم نعثر في الملفات الحالية على ملف LICENSE يحدد ترخيصاً قانونياً. أضف ملف LICENSE واختيار الترخيص المناسب قبل وصف المشروع بأنه MIT أو غيره.
 
-Environment variables override `data/settings.json`: `AICOS_DATA_DIR`, `AICOS_PORT`, `AICOS_HOST`,
-`AICOS_DB_PATH`, `AICOS_DEFAULT_CURRENCY`, `AICOS_API_KEY`, `AICOS_BACKUP_KEEP`, `AICOS_LOG_LEVEL`.
+---
 
-## License
+<div align="center">
 
-Open source, free to use.
+**AICompanyOS — Build your company, locally.**
+
+</div>
