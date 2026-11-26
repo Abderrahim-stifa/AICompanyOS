@@ -5,6 +5,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from core.services.interfaces import IActivityLogger
+
 _FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 _configured = False
 
@@ -63,7 +65,7 @@ def log_activity(database, action: str, entity_type: str, entity_id: int,
     )
 
 
-class DatabaseActivityLogger:
+class DatabaseActivityLogger(IActivityLogger):
     """Activity logger adapter implementing the service-layer logger contract."""
 
     def __init__(self, database):
