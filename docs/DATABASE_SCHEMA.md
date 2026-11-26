@@ -1,4 +1,4 @@
-# AICompanyOS SQLite schema — v0.1
+# AICompanyOS SQLite schema — v0.3.7
 
 ## Database lifecycle
 
@@ -82,5 +82,5 @@ separate subsystem and must not be conflated with the seven role agents.
 
 Schema changes must be additive and idempotent. Never drop/recreate the user's
 database to apply a v0.1 update. Back up the database before any future
-destructive migration. This document describes the schema currently present;
+destructive migration. This document describes the current schema through v0.3.7;
 it does not claim that a separate agent execution-history table exists.
