@@ -38,7 +38,7 @@ class InitDatabaseTests(unittest.TestCase):
                 init_db.initialize_database(db_path)
                 with sqlite3.connect(db_path) as conn:
                     conn.execute(
-                        "INSERT INTO tasks (title, agent, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                        "INSERT INTO tasks (title, role_agent_key, created_at, updated_at) VALUES (?, ?, ?, ?)",
                         ("Prototype", "ceo", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
                     )
                     conn.execute(
