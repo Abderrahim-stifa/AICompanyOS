@@ -5,6 +5,7 @@ Every write goes through the validators here, so the UI layers never touch raw i
 from __future__ import annotations
 
 from .database import Database
+from .init_db import initialize_database
 from .logs import setup_logging
 from .settings import load_settings
 from .validator import (
@@ -24,8 +25,8 @@ class Company:
     def __init__(self):
         self.settings = load_settings()
         setup_logging(self.settings.log_dir, self.settings.log_level)
+        initialize_database(self.settings.db_path)
         self.db = Database(self.settings.db_path)
-        self.db.init()
 
     # tasks
     def add_task(self, data: dict) -> dict:
