@@ -33,24 +33,24 @@ class Company:
         self.task_service = TaskService(self.db, self.settings.default_currency)
 
     # tasks
-    def add_task(self, data: dict, user_name: str = "Admin") -> dict:
+    def add_task(self, data: dict, user_name: str = "system") -> dict:
         return self.task_service.create_task(data, user_name=user_name)
 
     def update_task(self, task_id, data: dict, user_name: str | None = None) -> dict:
         return self.task_service.update_task(
-            task_id, data, user_name=user_name or data.get("user_name", "Admin")
+            task_id, data, user_name=user_name or data.get("user_name", "system")
         )
 
-    def delete_task(self, task_id, user_name: str = "Admin") -> None:
+    def delete_task(self, task_id, user_name: str = "system") -> None:
         return self.task_service.delete_task(task_id, user_name=user_name)
 
-    def assign_role_agent(self, task_id, agent_key: str, user_name: str = "Admin") -> dict:
+    def assign_role_agent(self, task_id, agent_key: str, user_name: str = "system") -> dict:
         task_id = clean_id(task_id, "task id")
         agent_key = clean_text(agent_key, "agent key", max_len=80)
         user_name = clean_text(user_name, "user_name", max_len=100)
         return self.db.assign_role_agent(task_id, agent_key, user_name=user_name)
 
-    def unassign_role_agent(self, task_id, user_name: str = "Admin") -> dict:
+    def unassign_role_agent(self, task_id, user_name: str = "system") -> dict:
         task_id = clean_id(task_id, "task id")
         user_name = clean_text(user_name, "user_name", max_len=100)
         return self.db.unassign_role_agent(task_id, user_name=user_name)
