@@ -20,6 +20,8 @@ def show_logs_page(company) -> None:
     frame["action"] = frame["action"].map(lambda value: ACTION_AR.get(value, value))
     frame = frame.rename(columns={
         "id": "الرقم", "action": "العملية",
-        "details": "التفاصيل", "created_at": "التاريخ",
+        "entity_type": "نوع الكيان", "entity_id": "رقم الكيان",
+        "user_name": "المستخدم", "details": "التفاصيل",
+        "created_at": "التاريخ",
     })
     st.dataframe(frame, width="stretch", hide_index=True)
