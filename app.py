@@ -10,6 +10,7 @@ import streamlit as st
 
 from core import agents as agents_mod
 from core import backup as backup_mod
+from core import ai_agents as role_agents
 from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 
@@ -152,6 +153,40 @@ def page_agents(company: Company) -> None:
     table(company.db.list_activity(),
           {"created_at": "الوقت", "agent": "الوكيل", "action": "الإجراء", "task_id": "رقم المهمة"},
           {"agent": AGENT_AR})
+
+
+
+def page_role_agents(company: Company) -> None:
+    st.header("مركز الوكلاء السبعة")
+    st.caption("اختر دوراً واكتب المهمة للحصول على خطة عمل منظمة. النسخة الحالية محلية وقائمة على قواعد وقوالب، وليست نماذج LLM مستقلة.")
+    labels = {key: value["name_ar"] for key, value in role_agents.AGENTS.items()}
+    selected = st.selectbox("الوكيل", list(labels), format_func=lambda key: labels[key])
+    st.info(role_agents.AGENTS[selected]["purpose"])
+    brief = st.text_area("وصف المهمة أو المشروع", height=150,
+                         placeholder="مثال: نريد إطلاق متجر إلكتروني لبيع المنتجات المحلية...")
+    if st.button("تشغيل الوكيل", type="primary", key="run_role_agent"):
+        try:
+            result = role_agents.run_agent(selected, brief)
+            st.session_state["role_agent_result"] = result
+            company.db.add_activity(selected, f"تم إعداد خطة أولية: {result['title']}")
+        except ValueError as exc:
+            st.warning(str(exc))
+
+    result = st.session_state.get("role_agent_result")
+    if result:
+        st.subheader(result["title"])
+        st.caption(f"{result['agent']} · {result['mode']}")
+        st.markdown("**المهمة:** " + result["brief"])
+        st.markdown("**خطوات العمل المقترحة**")
+        for step in result["steps"]:
+            st.markdown(f"- {step}")
+        st.markdown("**أسئلة يجب حسمها**")
+        for question in result["questions"]:
+            st.markdown(f"- {question}")
+        st.markdown("**ضوابط مشتركة**")
+        for item in result["common"]:
+            st.markdown(f"- {item}")
+        st.warning(result["notice"])
 
 
 def page_clients(company: Company) -> None:
@@ -376,6 +411,7 @@ def page_settings(company: Company) -> None:
 PAGES = {
     "لوحة التحكم": page_dashboard,
     "الوكلاء": page_agents,
+    "الوكلاء السبعة": page_role_agents,
     "العملاء": page_clients,
     "المشاريع": page_projects,
     "المهام": page_tasks,
