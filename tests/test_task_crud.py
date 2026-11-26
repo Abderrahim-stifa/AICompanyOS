@@ -38,12 +38,20 @@ class TaskCrudTests(unittest.TestCase):
         self.assertEqual(self.db.list_tasks(), [])
 
     def test_create_update_delete_are_recorded(self):
-        task = self.add_task()
-        self.db.update_task(task["id"], title="Renamed")
-        self.db.delete_task(task["id"])
+        task = self.db.add_task({
+            "title": "Audit me", "description": "", "source": "test",
+            "category": "", "price": 0, "currency": "MAD",
+        }, user_name="Tester")
+        self.db.update_task(task["id"], title="Renamed", user_name="Editor")
+        self.db.delete_task(task["id"], user_name="Owner")
         logs = self.db.list_system_logs()
-        self.assertEqual([row["action"] for row in logs],
-                         ["DELETE_TASK", "UPDATE_TASK", "CREATE_TASK"])
+        self.assertEqual([row["action"] for row in logs], ["DELETE", "UPDATE", "CREATE"])
+        self.assertEqual(
+            [(row["entity_type"], row["entity_id"], row["user_name"]) for row in logs],
+            [("TASK", task["id"], "Owner"),
+             ("TASK", task["id"], "Editor"),
+             ("TASK", task["id"], "Tester")],
+        )
         self.assertIn("Renamed", logs[1]["details"])
 
     def test_priority_column_migrates_existing_task_table(self):
