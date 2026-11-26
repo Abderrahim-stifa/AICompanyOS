@@ -448,14 +448,9 @@ def page_tasks(company: Company) -> None:
                         })
                         role_key = role_labels[edit_role]
                         if role_key and role_key != selected.get("role_agent_key"):
-                            company.assign_role_agent(selected["id"], role_key)
+                            company.assign_role_agent(selected["id"], role_key, user_name=user_name)
                         elif not role_key and selected.get("role_agent_key"):
-                            with company.db.connect() as conn:
-                                conn.execute(
-                                    "UPDATE tasks SET role_agent_key = NULL, updated_at = ? WHERE id = ?",
-                                    (__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(timespec="seconds"),
-                                     selected["id"]),
-                                )
+                            company.unassign_role_agent(selected["id"], user_name=user_name)
                         st.success("تم تحديث المهمة.")
                         st.rerun()
                     except (ValidationError, LookupError, ValueError) as exc:
