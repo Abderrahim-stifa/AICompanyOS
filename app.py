@@ -22,7 +22,7 @@ from pages.logs_page import show_logs_page
 from pages.audit_page import show_audit_page
 
 st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 
 TASK_AR = {
     "found": "تم العثور عليها", "classified": "مصنّفة", "assigned": "مُسندة",
@@ -105,6 +105,17 @@ def page_dashboard(company: Company) -> None:
     c4.metric("🤖 وكلاء الأدوار", len(role_overview))
     c5.metric("🟢 وكلاء نشطون", active_role_agents)
     st.caption(f"AICompanyOS v{APP_VERSION}")
+
+    st.subheader("🕒 آخر التعديلات")
+    recent_logs = db.list_system_logs(limit=10)
+    if recent_logs:
+        recent_frame = pd.DataFrame(recent_logs)
+        display_columns = [column for column in
+                           ("id", "action", "entity_type", "entity_id", "user_name", "created_at")
+                           if column in recent_frame.columns]
+        st.dataframe(recent_frame[display_columns], width="stretch", hide_index=True)
+    else:
+        st.info("لا توجد تعديلات مسجلة بعد.")
 
     if summary["money"]:
         st.subheader("الحسابات")
