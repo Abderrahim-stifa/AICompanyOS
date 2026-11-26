@@ -150,7 +150,7 @@ class Database:
                 """INSERT INTO tasks
                    (title, description, source, category, price, currency, status, priority, created_at, updated_at)
                    VALUES (:title, :description, :source, :category, :price, :currency, 'found', :priority, :now, :now)""",
-                {**task, "now": now},
+                {**task, "now": now, "priority": task.get("priority", "normal")},
             )
             task_id = cur.lastrowid
         self.add_system_log("CREATE_TASK", task["title"])
