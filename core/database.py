@@ -157,7 +157,7 @@ class Database:
         log.info("database ready at %s", self.path)
 
     # ---- tasks ----
-    def add_task(self, task: dict, user_name: str = "Admin") -> dict:
+    def add_task(self, task: dict, user_name: str = "system") -> dict:
         now = _now()
         with self.connect() as conn:
             cur = conn.execute(
@@ -191,7 +191,7 @@ class Database:
                 return []
         return [dict(row) for row in rows]
 
-    def assign_role_agent(self, task_id: int, agent_key: str, user_name: str = "Admin") -> dict:
+    def assign_role_agent(self, task_id: int, agent_key: str, user_name: str = "system") -> dict:
         """Assign a task to one of the seven role agents and record the event."""
         task = self.get_task(task_id)
         with self.connect() as conn:
@@ -219,7 +219,7 @@ class Database:
         log.info("task #%s assigned to role agent %s", task_id, agent_key)
         return self.get_task(task_id)
 
-    def unassign_role_agent(self, task_id: int, user_name: str = "Admin") -> dict:
+    def unassign_role_agent(self, task_id: int, user_name: str = "system") -> dict:
         task = self.get_task(task_id)
         now = _now()
         with self.connect() as conn:
@@ -295,7 +295,7 @@ class Database:
                     status: str | None = None, category: str | None = None,
                     agent: str | None = None, priority: str | None = None,
                     source: str | None = None, price: float | None = None,
-                    currency: str | None = None, user_name: str = "Admin") -> dict:
+                    currency: str | None = None, user_name: str = "system") -> dict:
         values = {"title": title, "description": description, "priority": priority,
                   "source": source, "price": price, "currency": currency,
                   "status": status, "category": category, "agent": agent}
@@ -332,7 +332,7 @@ class Database:
         log.info("task #%s updated", task_id)
         return new_values
 
-    def delete_task(self, task_id: int, user_name: str = "Admin") -> None:
+    def delete_task(self, task_id: int, user_name: str = "system") -> None:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if row is None:
