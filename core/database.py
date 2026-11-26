@@ -182,7 +182,7 @@ class Database:
                 return []
         return [dict(row) for row in rows]
 
-    def assign_role_agent(self, task_id: int, agent_key: str) -> dict:
+    def assign_role_agent(self, task_id: int, agent_key: str, user_name: str = "Admin") -> dict:
         """Assign a task to one of the seven role agents and record the event."""
         task = self.get_task(task_id)
         with self.connect() as conn:
@@ -201,7 +201,29 @@ class Database:
                 "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
                 (agent_key, f"تم إسناد المهمة: {task['title']}", task_id, now),
             )
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES ('ASSIGN', 'TASK', ?, ?, ?, ?)""",
+                (task_id, user_name, f"{task['title']} → {agent_key}", now),
+            )
         log.info("task #%s assigned to role agent %s", task_id, agent_key)
+        return self.get_task(task_id)
+
+    def unassign_role_agent(self, task_id: int, user_name: str = "Admin") -> dict:
+        task = self.get_task(task_id)
+        now = _now()
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE tasks SET role_agent_key = NULL, updated_at = ? WHERE id = ?",
+                (now, task_id),
+            )
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, created_at)
+                   VALUES ('UNASSIGN', 'TASK', ?, ?, ?, ?)""",
+                (task_id, user_name, task["title"], now),
+            )
         return self.get_task(task_id)
 
     def set_task_status(self, task_id: int, status: str) -> dict:
