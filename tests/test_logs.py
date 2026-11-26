@@ -22,7 +22,10 @@ class ActivityLogTests(unittest.TestCase):
                 "category": "", "price": 0, "currency": "MAD",
             })
             entries = db.list_system_logs()
-            self.assertEqual(entries[0]["action"], "CREATE_TASK")
+            self.assertEqual(entries[0]["action"], "CREATE")
+            self.assertEqual(entries[0]["entity_type"], "TASK")
+            self.assertEqual(entries[0]["entity_id"], task["id"])
+            self.assertEqual(entries[0]["user_name"], "Admin")
             self.assertEqual(entries[0]["details"], "Audit logs")
             self.assertTrue(entries[0]["created_at"])
 
