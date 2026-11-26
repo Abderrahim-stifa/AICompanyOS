@@ -59,6 +59,19 @@ python -m unittest discover -s tests
 
 الوكلاء الحاليون قائمون على قواعد محلية (Rule-based)، وليست نماذج لغوية مستقلة. يظل قرار قبول المهمة وتنفيذها تحت إشراف المستخدم.
 
+## التشغيل على Windows
+
+إذا ظهر الخطأ `'streamlit' is not recognized` رغم تثبيت الحزمة، شغّلها عبر Python مباشرةً:
+
+```bat
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
+```
+
+أو انقر مرتين على الملف `run_windows.bat` الموجود في جذر المشروع. المشغّل يستعمل `python -m streamlit` ولا يعتمد على وجود مجلد Scripts في PATH.
+
+ملاحظة: هذا المستودع يشغّل الواجهة `app.py`. إذا كانت نسختك المحلية تعتمد على `ai_console.py` و`ai_company.py`، فلا تستبدل ملفاتها بهذه النسخة قبل دمج الاختلافات؛ كما أن مجلدك المحلي الذي لا يحتوي على `.git` لا يمكن تحديثه بأمر `git pull`.
+
 ## التشغيل المحلي
 
 يتطلب Python 3.10 أو أحدث.
