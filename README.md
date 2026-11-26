@@ -166,19 +166,19 @@ python cli.py serve
 </div>
 
 
-## v0.1 role agents and dashboard preferences
+## إعدادات الوكلاء والواجهة في v0.1
 
-The seven role-based agents are stored separately in `role_agents`; the original
-`agents` table remains dedicated to the five-agent task pipeline. Database
-initialization is additive and safe to run repeatedly:
+تُخزَّن الوكلاء السبعة في جدول مستقل اسمه `role_agents`، بينما يبقى جدول
+`agents` مخصصاً لوكلاء مسار المهام الخمسة الموجودين مسبقاً. التهيئة تراكمية
+ويمكن تشغيلها أكثر من مرة دون حذف البيانات:
 
 ```bash
 python -m core.init_db
 python -m streamlit run app.py
 ```
 
-Dashboard preferences (company name, preferred language, dark mode, and theme)
-are persisted in both `settings` in SQLite and `data/settings.json`. The
-dashboard currently remains Arabic/RTL; the English language choice is saved
-as a preference for a future localization pass. Role-agent task counts,
-active/ready state, and last activity are read from the live task/activity data.
+تُحفظ تفضيلات لوحة التحكم (اسم الشركة، لغة التفضيل، الوضع الليلي، والسمة)
+في جدول `settings` داخل SQLite وفي الملف `data/settings.json`. الواجهة
+حالياً عربية وبدعم RTL؛ اختيار English يُحفظ كتفضيل، لكن الترجمة الإنجليزية
+الكاملة مؤجلة لمرحلة لاحقة. أعداد مهام الوكلاء وحالاتهم وآخر نشاط تُقرأ من
+بيانات المهام وسجل النشاط الفعلي.
