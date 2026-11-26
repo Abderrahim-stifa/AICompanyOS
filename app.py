@@ -166,7 +166,7 @@ def page_role_agents(company: Company) -> None:
     card_rows = st.columns(3)
     for index, agent in enumerate(agent_cards):
         with card_rows[index % 3]:
-            st.info(f"**{agent['name']}**\\n\\nالدور: {agent['role']}\\n\\nالحالة الابتدائية: {agent['status']}")
+            st.info(f"**{agent['name']}**\n\nالدور: {agent['role']}\n\nالحالة الابتدائية: {agent['status']}")
     overview = build_agent_overview(company.db.list_tasks())
     active_count = sum(item["status"] == "active" for item in overview)
     ready_count = sum(item["status"] == "ready" for item in overview)
