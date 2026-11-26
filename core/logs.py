@@ -61,3 +61,16 @@ def log_activity(database, action: str, entity_type: str, entity_id: int,
         entity_id=entity_id,
         user_name=user_name.strip(),
     )
+
+
+class DatabaseActivityLogger:
+    """Activity logger adapter implementing the service-layer logger contract."""
+
+    def __init__(self, database):
+        self.database = database
+
+    def log(self, action, entity_type, entity_id, user_name, details=""):
+        return log_activity(
+            self.database, action=action, entity_type=entity_type,
+            entity_id=entity_id, user_name=user_name, details=details,
+        )
