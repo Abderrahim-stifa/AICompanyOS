@@ -46,6 +46,37 @@ class TaskCrudTests(unittest.TestCase):
                          ["DELETE_TASK", "UPDATE_TASK", "CREATE_TASK"])
         self.assertIn("Renamed", logs[1]["details"])
 
+    def test_priority_column_migrates_existing_task_table(self):
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "legacy.db")
+            with sqlite3.connect(path) as conn:
+                conn.execute("""
+                    CREATE TABLE tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '',
+                        source TEXT NOT NULL DEFAULT '',
+                        category TEXT NOT NULL DEFAULT '',
+                        price REAL NOT NULL DEFAULT 0,
+                        currency TEXT NOT NULL DEFAULT 'USD',
+                        status TEXT NOT NULL DEFAULT 'found',
+                        agent TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+                conn.execute(
+                    "INSERT INTO tasks (title, created_at, updated_at) VALUES (?, ?, ?)",
+                    ("Legacy task", "2026-01-01", "2026-01-01"),
+                )
+            migrated = Database(path)
+            migrated.init()
+            row = migrated.get_task(1)
+            self.assertEqual(row["title"], "Legacy task")
+            self.assertEqual(row["priority"], "normal")
+
     def test_invalid_priority_is_rejected(self):
         task = self.add_task()
         with self.assertRaises(ValueError):
