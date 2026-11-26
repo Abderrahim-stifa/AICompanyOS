@@ -17,6 +17,7 @@ from core.service import Company
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 
 st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
+APP_VERSION = "0.1.0"
 
 TASK_AR = {
     "found": "تم العثور عليها", "classified": "مصنّفة", "assigned": "مُسندة",
@@ -90,11 +91,15 @@ def page_dashboard(company: Company) -> None:
     clients, projects, tasks = db.list_clients(), db.list_projects(), db.list_tasks()
     summary = db.summary()
 
-    c1, c2, c3, c4 = st.columns(4)
+    role_overview = build_agent_overview(tasks)
+    active_role_agents = sum(item["status"] == "active" for item in role_overview)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("👥 العملاء", len(clients))
     c2.metric("📂 المشاريع", len(projects))
     c3.metric("✅ المهام", len(tasks))
-    c4.metric("🤖 الوكلاء", len(db.list_agents()))
+    c4.metric("🤖 وكلاء الأدوار", len(role_overview))
+    c5.metric("🟢 وكلاء نشطون", active_role_agents)
+    st.caption(f"AICompanyOS v{APP_VERSION}")
 
     if summary["money"]:
         st.subheader("الحسابات")
@@ -103,6 +108,14 @@ def page_dashboard(company: Company) -> None:
             m1.metric(f"الدخل ({row['currency']})", f"{row['income']:,.2f}")
             m2.metric(f"المصروفات ({row['currency']})", f"{row['expense']:,.2f}")
             m3.metric(f"الربح ({row['currency']})", f"{row['profit']:,.2f}")
+
+    st.subheader("نشاط الوكلاء السبعة")
+    agent_counts = pd.DataFrame([
+        {"الوكيل": item["name_ar"], "عدد المهام": item["task_count"]}
+        for item in role_overview
+    ])
+    agent_fig = px.bar(agent_counts, x="الوكيل", y="عدد المهام", title="المهام حسب الوكيل")
+    st.plotly_chart(agent_fig, width="stretch")
 
     left, right = st.columns(2)
     with left:
