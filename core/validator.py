@@ -107,6 +107,7 @@ def validate_task(data: dict, default_currency: str = "USD") -> dict:
         "category": clean_text(data.get("category"), "category", required=False, max_len=100),
         "price": clean_amount(data.get("price", 0), "price"),
         "currency": clean_currency(data.get("currency") or default_currency),
+        "priority": clean_choice(data.get("priority") or "normal", "priority", ("low", "normal", "high", "urgent")),
     }
 
 
