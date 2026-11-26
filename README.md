@@ -182,3 +182,17 @@ python -m streamlit run app.py
 حالياً عربية وبدعم RTL؛ اختيار English يُحفظ كتفضيل، لكن الترجمة الإنجليزية
 الكاملة مؤجلة لمرحلة لاحقة. أعداد مهام الوكلاء وحالاتهم وآخر نشاط تُقرأ من
 بيانات المهام وسجل النشاط الفعلي.
+
+
+## v0.2 — Role-agent task engine
+
+The existing `tasks` table and legacy pipeline `agent` field are retained.
+An additive migration introduces `role_agent_key`, `result`, `assigned_at`,
+and `completed_at`, so tasks can also be assigned to one of the seven
+business-role agents without changing the five-agent pipeline.
+
+The Tasks page supports role-agent assignment, lifecycle status updates,
+and saving a textual execution report. Saving a report marks the task complete
+and writes an event to the existing activity history. This release provides
+task orchestration and result persistence; it does not claim autonomous LLM
+execution by the seven role agents.
