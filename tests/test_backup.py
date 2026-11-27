@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.backup import create_backup, inspect_backup, list_backups, restore_backup
 
@@ -77,6 +78,23 @@ class BackupTests(unittest.TestCase):
         restore_backup(str(backup), str(self.db))
         safety_files = list(self.db.parent.glob("company.before-restore-*.db"))
         self.assertEqual(len(safety_files), 2)
+
+    def test_failed_atomic_replace_keeps_active_database_and_safety_copy(self):
+        backup = create_backup(str(self.db), str(self.root / "backups"))
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("UPDATE records SET value = 'changed'")
+        with patch("core.backup.os.replace", side_effect=OSError("simulated replace failure")):
+            with self.assertRaises(OSError):
+                restore_backup(str(backup), str(self.db))
+        with sqlite3.connect(self.db) as conn:
+            value = conn.execute("SELECT value FROM records").fetchone()[0]
+        self.assertEqual(value, "changed")
+        safety_files = list(self.db.parent.glob("company.before-restore-*.db"))
+        self.assertEqual(len(safety_files), 1)
+        with sqlite3.connect(safety_files[0]) as conn:
+            safety_value = conn.execute("SELECT value FROM records").fetchone()[0]
+        self.assertEqual(safety_value, "changed")
+        self.assertEqual(list(self.db.parent.glob(".company.restore-*.db")), [])
 
     def test_restore_creates_missing_target_directory(self):
         backup = create_backup(str(self.db), str(self.root / "backups"))
