@@ -18,6 +18,7 @@ import json
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from core import agents as agents_mod
 from core import backup as backup_mod
@@ -29,6 +30,7 @@ from core.validator import (
 )
 
 MAX_BODY = 1_000_000  # 1 MB
+LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
 
 # ----------------------------------------------------------------------------- HTTP
@@ -76,30 +78,51 @@ def make_handler(company: Company):
             return data
 
         def _route(self, method: str) -> None:
-            path = self.path.split("?", 1)[0].rstrip("/") or "/"
-            query = self.path.split("?", 1)[1] if "?" in self.path else ""
+            parts = urlsplit(self.path)
+            path = parts.path.rstrip("/") or "/"
+            query = parse_qs(parts.query)
             try:
+                # Without an API key only local Host headers are accepted (DNS rebinding).
+                host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+                if not api_key and host not in LOCAL_HOSTS:
+                    return self._send(403, {"error": "forbidden host"})
+
+                # Writes must be JSON: browsers then need a CORS preflight, which blocks
+                # cross-site form posts (text/plain) to the local API.
+                if method in ("POST", "PATCH"):
+                    ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+                    if ctype.lower() != "application/json":
+                        return self._send(
+                            415, {"error": "Content-Type must be application/json"}
+                        )
+
                 if path == "/health" and method == "GET":
                     return self._send(200, {"status": "ok"})
                 if not self._authorized():
                     return self._send(401, {"error": "invalid or missing X-API-Key"})
 
                 if path == "/tasks" and method == "GET":
-                    m = re.search(r"(?:^|&)status=([a-z_]+)", query)
-                    return self._send(200, company.db.list_tasks(m.group(1) if m else None))
+                    status = (query.get("status") or [None])[0]
+                    if status is not None and status not in TASK_STATUSES:
+                        raise ValidationError("invalid status")
+                    return self._send(200, company.db.list_tasks(status))
                 if path == "/tasks" and method == "POST":
-                    return self._send(201, company.add_task(self._read_json()))
+                    return self._send(
+                        201, company.add_task_analyzed(self._read_json(), user_name="api")
+                    )
                 m = re.fullmatch(r"/tasks/(\d+)", path)
                 if m and method == "GET":
                     return self._send(200, company.db.get_task(int(m.group(1))))
                 if m and method == "PATCH":
-                    return self._send(200, company.update_task(m.group(1), self._read_json()))
+                    return self._send(200, company.update_task(m.group(1), self._read_json(), user_name="api"))
                 if path == "/agents" and method == "GET":
                     return self._send(200, company.db.list_agents())
                 if path == "/ledger" and method == "GET":
                     return self._send(200, company.db.list_ledger())
                 if path == "/ledger" and method == "POST":
-                    return self._send(201, company.add_ledger(self._read_json()))
+                    return self._send(
+                        201, company.add_ledger(self._read_json(), user_name="api")
+                    )
                 if path == "/summary" and method == "GET":
                     return self._send(200, company.db.summary())
                 self._send(404, {"error": "not found"})
@@ -196,20 +219,20 @@ def main(argv=None) -> int:
         if args.cmd == "init":
             print(f"ready: {s.db_path}")
         elif args.cmd == "add-task":
-            show(company.add_task({
+            show(company.add_task_analyzed({
                 "title": args.title, "description": args.description, "source": args.source,
                 "category": args.category, "price": args.price, "currency": args.currency,
-            }))
+            }, user_name="cli"))
         elif args.cmd == "tasks":
             show(company.db.list_tasks(args.status))
         elif args.cmd == "set-status":
             data = {"status": args.status, "category": args.category, "agent": args.agent}
-            show(company.update_task(args.id, {k: v for k, v in data.items() if v is not None}))
+            show(company.update_task(args.id, {k: v for k, v in data.items() if v is not None}, user_name="cli"))
         elif args.cmd == "ledger":
             show(company.add_ledger({
                 "kind": args.kind, "amount": args.amount, "currency": args.currency,
                 "task_id": args.task, "note": args.note,
-            }))
+            }, user_name="cli"))
         elif args.cmd == "agents":
             show(company.db.list_agents())
         elif args.cmd == "run-agents":

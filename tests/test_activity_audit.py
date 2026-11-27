@@ -39,3 +39,28 @@ def test_delete_log_keeps_deleted_snapshot(temp_db, sample_task):
     assert event["action"] == "DELETE"
     assert json.loads(event["old_values"])["title"] == "Sample Task"
     assert event["new_values"] is None
+
+
+
+def test_client_project_and_ledger_audits_capture_actor_and_snapshots(temp_db):
+    client = temp_db.add_client(
+        {"name": "Audit client", "email": "", "phone": ""}, user_name="operator"
+    )
+    project = temp_db.add_project({
+        "name": "Audit project", "client_id": client["id"], "status": "new",
+        "budget": 100, "currency": "MAD",
+    }, user_name="operator")
+    temp_db.add_ledger_entry({
+        "task_id": None, "kind": "income", "amount": 25,
+        "currency": "MAD", "note": "Test income",
+    }, user_name="accountant")
+
+    events = temp_db.list_system_logs()
+    assert [event["entity_type"] for event in events[:3]] == [
+        "LEDGER", "PROJECT", "CLIENT"
+    ]
+    assert all(event["user_name"] == "operator" for event in events[1:])
+    assert events[0]["user_name"] == "accountant"
+    assert json.loads(events[0]["new_values"])["amount"] == 25
+    assert json.loads(events[1]["new_values"])["name"] == "Audit project"
+    assert json.loads(events[2]["new_values"])["name"] == "Audit client"

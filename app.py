@@ -7,7 +7,6 @@ from core import backup as backup_mod
 from core.auth import check_password, logout
 from core.auth_context import CurrentUser
 from core.page_views import get_company, get_dashboard_data, invalidate_task_caches
-from core.smart_agent import SmartTaskAnalyzer
 from core.ui_helpers import notify_and_refresh
 from core.validator import ValidationError
 from core.ui_theme import apply_custom_theme
@@ -73,25 +72,20 @@ def quick_action_dialog() -> None:
                 if not title.strip():
                     st.error("أدخل عنوان المهمة.")
                     return
-                analysis = SmartTaskAnalyzer.analyze_and_classify(
-                    f"{title} {description}"
-                )
-                company.add_task(
+                task = company.add_task_analyzed(
                     {
                         "title": title,
                         "description": description,
                         "source": "quick_action",
-                        "category": analysis["category"],
                         "price": price,
                         "currency": company.settings.default_currency,
-                        "priority": analysis["priority"],
                     },
                     user_name=CurrentUser.get_username(),
                 )
                 invalidate_task_caches()
                 notify_and_refresh(
-                    f"تم إنشاء المهمة. الفئة: {analysis['category']}، "
-                    f"الأولوية: {analysis['priority']}."
+                    f"تم إنشاء المهمة. الفئة: {task['category']}، "
+                    f"الأولوية: {task['priority']}."
                 )
             except (ValidationError, LookupError, ValueError) as exc:
                 st.error(str(exc))
@@ -104,7 +98,8 @@ def quick_action_dialog() -> None:
         if submitted:
             try:
                 company.add_client(
-                    {"name": name, "email": email, "phone": phone}
+                    {"name": name, "email": email, "phone": phone},
+                    user_name=CurrentUser.get_username(),
                 )
                 get_dashboard_data.clear()
                 notify_and_refresh("تمت إضافة العميل بنجاح.")

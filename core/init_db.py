@@ -23,6 +23,8 @@ ROLE_AGENTS = (
     ("market_analyst", "Market Analyst Agent", "تحليل السوق", "انتظار"),
 )
 
+_READY: set[str] = set()
+
 DEFAULT_SETTINGS = {
     "company_name": "AICompanyOS",
     "language": "ar",
@@ -79,6 +81,11 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
     """Initialize the existing application schema and additive v0.1 tables."""
     settings = load_settings()
     target = db_path or settings.db_path
+    # Schema, seeding and settings are idempotent but costly; run once per database file
+    # per process (callers invoke this on every Streamlit rerun).
+    if (target in _READY and target != ":memory:" and Path(target).exists()
+            and SETTINGS_FILE.exists()):
+        return target
     Database(target).init()
 
     conn = sqlite3.connect(target)
@@ -138,6 +145,8 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
 
     # Apply query indexes only after all indexed tables have been initialized.
     optimize_database(target)
+    if seed:  # a seed=False run must not hide a later seeding run
+        _READY.add(target)
     return target
 
 
@@ -224,9 +233,19 @@ def save_ui_settings(values: dict, db_path: str | None = None) -> dict:
     }
     target = db_path or load_settings().db_path
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # Merge into the existing file: it also holds runtime settings (port, api_key, ...)
+    # written by core.settings.save_settings, which must not be wiped.
+    existing: dict = {}
+    if SETTINGS_FILE.exists():
+        try:
+            loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except json.JSONDecodeError:
+            existing = {}
     temporary = SETTINGS_FILE.with_suffix(".json.tmp")
     temporary.write_text(
-        json.dumps(normalized, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({**existing, **normalized}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     temporary.replace(SETTINGS_FILE)

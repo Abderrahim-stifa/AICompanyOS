@@ -8,10 +8,12 @@ from .database import Database
 from .init_db import initialize_database
 from .logs import setup_logging
 from .settings import load_settings
+from .smart_agent import SmartTaskAnalyzer
 from .services.task_service import TaskService
 from .validator import (
     PROJECT_STATUSES,
     TASK_STATUSES,
+    ValidationError,
     clean_choice,
     clean_id,
     clean_text,
@@ -35,6 +37,22 @@ class Company:
     # tasks
     def add_task(self, data: dict, user_name: str = "system") -> dict:
         return self.task_service.create_task(data, user_name=user_name)
+
+    def add_task_analyzed(self, data: dict, user_name: str = "system") -> dict:
+        """Add a task, classifying it locally when no category was given.
+
+        Shared by the dashboard, the CLI and the HTTP API so all three behave alike.
+        """
+        if not isinstance(data, dict):
+            raise ValidationError("task must be an object")
+        data = dict(data)
+        if not data.get("category"):
+            analysis = SmartTaskAnalyzer.analyze_and_classify(
+                f"{data.get('title') or ''} {data.get('description') or ''}"
+            )
+            data["category"] = analysis["category"]
+            data.setdefault("priority", analysis["priority"])
+        return self.add_task(data, user_name=user_name)
 
     def update_task(self, task_id, data: dict, user_name: str | None = None) -> dict:
         return self.task_service.update_task(
@@ -66,34 +84,53 @@ class Company:
         return self.db.save_task_result(task_id, result)
 
     # ledger
-    def add_ledger(self, data: dict) -> dict:
-        return self.db.add_ledger_entry(validate_ledger_entry(data, self.settings.default_currency))
+    def add_ledger(self, data: dict, user_name: str = "system") -> dict:
+        return self.db.add_ledger_entry(
+            validate_ledger_entry(data, self.settings.default_currency),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
 
     # clients
-    def add_client(self, data: dict) -> dict:
-        return self.db.add_client(validate_client(data))
+    def add_client(self, data: dict, user_name: str = "system") -> dict:
+        return self.db.add_client(
+            validate_client(data), user_name=clean_text(user_name, "user_name", max_len=100)
+        )
 
-    def update_client(self, client_id, data: dict) -> dict:
-        return self.db.update_client(clean_id(client_id, "client id"), validate_client(data))
+    def update_client(self, client_id, data: dict, user_name: str = "system") -> dict:
+        return self.db.update_client(
+            clean_id(client_id, "client id"), validate_client(data),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
 
-    def delete_client(self, client_id) -> None:
-        self.db.delete_client(clean_id(client_id, "client id"))
+    def delete_client(self, client_id, user_name: str = "system") -> None:
+        self.db.delete_client(
+            clean_id(client_id, "client id"),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
 
     # projects
-    def add_project(self, data: dict) -> dict:
-        return self.db.add_project(validate_project(data, self.settings.default_currency))
+    def add_project(self, data: dict, user_name: str = "system") -> dict:
+        return self.db.add_project(
+            validate_project(data, self.settings.default_currency),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
 
-    def update_project(self, project_id, data: dict) -> dict:
+    def update_project(self, project_id, data: dict, user_name: str = "system") -> dict:
         return self.db.update_project(
             clean_id(project_id, "project id"),
             validate_project(data, self.settings.default_currency),
+            user_name=clean_text(user_name, "user_name", max_len=100),
         )
 
-    def set_project_status(self, project_id, status) -> None:
+    def set_project_status(self, project_id, status, user_name: str = "system") -> None:
         self.db.set_project_status(
             clean_id(project_id, "project id"),
             clean_choice(status, "status", PROJECT_STATUSES),
+            user_name=clean_text(user_name, "user_name", max_len=100),
         )
 
-    def delete_project(self, project_id) -> None:
-        self.db.delete_project(clean_id(project_id, "project id"))
+    def delete_project(self, project_id, user_name: str = "system") -> None:
+        self.db.delete_project(
+            clean_id(project_id, "project id"),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )

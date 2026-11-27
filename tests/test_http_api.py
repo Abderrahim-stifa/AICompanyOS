@@ -1,8 +1,10 @@
 """Focused tests for HTTP request-body validation."""
 import io
+import json
 import unittest
 from email.message import Message
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from cli import make_handler
 from core.validator import ValidationError
@@ -40,3 +42,60 @@ class HttpBodyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _route(method, path, host="localhost", content_type=None, body=None):
+    company = Mock()
+    company.settings = SimpleNamespace(api_key="")
+    handler_type = make_handler(company)
+    handler = handler_type.__new__(handler_type)
+    handler.headers = Message()
+    handler.headers["Host"] = host
+    if content_type:
+        handler.headers["Content-Type"] = content_type
+    if body is not None:
+        encoded = json.dumps(body).encode("utf-8")
+        handler.headers["Content-Length"] = str(len(encoded))
+        handler.rfile = io.BytesIO(encoded)
+    response = {}
+    handler._send = lambda code, payload: response.update(code=code, payload=payload)
+    handler.path = path
+    handler._route(method)
+    return response, company
+
+
+def test_api_rejects_non_local_host_without_api_key():
+    response, _ = _route("GET", "/health", host="attacker.example")
+    assert response["code"] == 403
+
+
+def test_api_rejects_write_without_json_content_type():
+    response, _ = _route("POST", "/tasks", content_type="text/plain", body={})
+    assert response["code"] == 415
+
+
+def test_api_rejects_invalid_task_status_filter():
+    response, company = _route("GET", "/tasks?status=not-a-status")
+    assert response["code"] == 400
+    company.db.list_tasks.assert_not_called()
+
+
+def test_api_task_patch_uses_api_audit_actor():
+    response, company = _route(
+        "PATCH", "/tasks/7", content_type="application/json", body={"status": "done"}
+    )
+    company.update_task.assert_called_once_with(
+        "7", {"status": "done"}, user_name="api"
+    )
+
+
+def test_cli_status_update_uses_cli_audit_actor(monkeypatch):
+    import cli
+
+    company = Mock()
+    monkeypatch.setattr(cli, "Company", Mock(return_value=company))
+    monkeypatch.setattr(cli, "show", Mock())
+    assert cli.main(["set-status", "7", "done"]) == 0
+    company.update_task.assert_called_once_with(
+        "7", {"status": "done"}, user_name="cli"
+    )

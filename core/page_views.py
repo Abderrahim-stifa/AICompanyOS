@@ -396,7 +396,8 @@ def page_clients(company: Company) -> None:
         phone = st.text_input("الهاتف (اختياري)")
         if st.form_submit_button("حفظ"):
             try:
-                company.add_client({"name": name, "email": email, "phone": phone})
+                company.add_client({"name": name, "email": email, "phone": phone},
+                                   user_name=CurrentUser.get_username())
                 st.success("تمت إضافة العميل")
                 st.rerun()
             except ValidationError as exc:
@@ -414,7 +415,8 @@ def page_clients(company: Company) -> None:
             new_phone = st.text_input("الهاتف (اختياري)", value=current["phone"], key=f"ec_phone_{cid}")
             if st.button("حفظ التعديل", key="edit_client_btn"):
                 try:
-                    company.update_client(cid, {"name": new_name, "email": new_email, "phone": new_phone})
+                    company.update_client(cid, {"name": new_name, "email": new_email, "phone": new_phone},
+                                          user_name=CurrentUser.get_username())
                     st.success("تم تعديل العميل")
                     st.rerun()
                 except (ValidationError, LookupError) as exc:
@@ -425,7 +427,7 @@ def page_clients(company: Company) -> None:
             choice = st.selectbox("اختر العميل", list(options), key="del_client")
             sure = st.checkbox("أؤكد الحذف", key="del_client_ok")
             if st.button("حذف", key="del_client_btn") and sure:
-                company.delete_client(options[choice])
+                company.delete_client(options[choice], user_name=CurrentUser.get_username())
                 st.rerun()
 
 
@@ -449,7 +451,8 @@ def page_projects(company: Company) -> None:
         if st.form_submit_button("حفظ"):
             try:
                 company.add_project({"name": name, "client_id": client_options[client],
-                                     "status": status, "budget": budget, "currency": currency})
+                                     "status": status, "budget": budget, "currency": currency},
+                                    user_name=CurrentUser.get_username())
                 st.success("تمت إضافة المشروع")
                 st.rerun()
             except (ValidationError, LookupError) as exc:
@@ -477,7 +480,7 @@ def page_projects(company: Company) -> None:
                     company.update_project(pid, {
                         "name": new_name, "client_id": client_options[new_client], "status": new_status,
                         "budget": new_budget, "currency": current["currency"],
-                    })
+                    }, user_name=CurrentUser.get_username())
                     st.success("تم تعديل المشروع")
                     st.rerun()
                 except (ValidationError, LookupError) as exc:
@@ -490,11 +493,12 @@ def page_projects(company: Company) -> None:
                                       format_func=lambda v: ar(PROJECT_AR, v), key="edit_project_status")
             col1, col2 = st.columns(2)
             if col1.button("تحديث الحالة"):
-                company.set_project_status(options[choice], new_status)
+                company.set_project_status(options[choice], new_status,
+                                           user_name=CurrentUser.get_username())
                 st.rerun()
             sure = col2.checkbox("أؤكد الحذف", key="del_project_ok")
             if col2.button("حذف المشروع") and sure:
-                company.delete_project(options[choice])
+                company.delete_project(options[choice], user_name=CurrentUser.get_username())
                 st.rerun()
 
 
@@ -774,7 +778,8 @@ def page_finance(company: Company) -> None:
         if st.form_submit_button("حفظ"):
             try:
                 company.add_ledger({"kind": kind, "amount": amount, "currency": currency,
-                                    "task_id": task_options[task], "note": note})
+                                    "task_id": task_options[task], "note": note},
+                                   user_name=CurrentUser.get_username())
                 st.success("تم تسجيل العملية")
                 st.rerun()
             except (ValidationError, LookupError) as exc:
