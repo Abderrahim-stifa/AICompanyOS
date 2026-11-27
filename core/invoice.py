@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from html import escapefrom typing import Any
+from html import escape
+from typing import Any
 
 
 _STATUS_AR = {
