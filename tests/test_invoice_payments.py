@@ -99,3 +99,76 @@ def test_payment_requires_issued_invoice_and_matching_currency(temp_db):
         temp_db.record_payment(invoice["id"], 10, "USD", "2026-11-27")
     assert temp_db.list_payments() == []
     assert temp_db.list_ledger() == []
+
+
+def test_concurrent_payments_cannot_overpay_invoice(temp_db):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    invoice = _invoice(temp_db)
+    temp_db.issue_invoice(invoice["id"])
+    barrier = Barrier(2)
+
+    def pay(reference):
+        barrier.wait()
+        try:
+            temp_db.record_payment(
+                invoice["id"], 600, "MAD", "2026-11-27",
+                reference=reference, user_name=reference,
+            )
+            return "accepted"
+        except ValueError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(pay, ("parallel-a", "parallel-b")))
+
+    assert sorted(results) == ["accepted", "rejected"]
+    payments = temp_db.list_payments(invoice["id"])
+    assert len(payments) == 1
+    assert sum(float(item["amount"]) for item in payments) == 600
+    ledger = temp_db.list_ledger()
+    assert sum(1 for item in ledger if item["kind"] == "income") == 1
+    payment_events = [
+        event for event in temp_db.list_system_logs()
+        if event["entity_type"] == "PAYMENT"
+    ]
+    assert len(payment_events) == 1
+
+
+def test_concurrent_refunds_cannot_refund_payment_twice(temp_db):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    invoice = _invoice(temp_db)
+    temp_db.issue_invoice(invoice["id"])
+    payment = temp_db.record_payment(
+        invoice["id"], 1000, "MAD", "2026-11-27", reference="original-payment"
+    )
+    barrier = Barrier(2)
+
+    def refund(reference):
+        barrier.wait()
+        try:
+            temp_db.refund_payment(
+                payment["id"], 600, "2026-11-27",
+                reference=reference, user_name=reference,
+            )
+            return "accepted"
+        except ValueError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(refund, ("parallel-refund-a", "parallel-refund-b")))
+
+    assert sorted(results) == ["accepted", "rejected"]
+    refunds = temp_db.list_refunds(payment["id"])
+    assert len(refunds) == 1
+    assert sum(float(item["amount"]) for item in refunds) == 600
+    ledger = temp_db.list_ledger()
+    assert sum(1 for item in ledger if item["kind"] == "expense") == 1
+    refund_events = [
+        event for event in temp_db.list_system_logs()
+        if event["entity_type"] == "REFUND"
+    ]
+    assert len(refund_events) == 1
