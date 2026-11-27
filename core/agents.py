@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .database import Database
 from .logs import get_logger
+from .smart_agent import SmartTaskAnalyzer
 
 log = get_logger("agents")
 
@@ -62,9 +63,24 @@ def run_classifier(db: Database) -> list[dict]:
             db.update_task(task["id"], status="rejected", agent="classifier")
             msg = f"رُفضت المهمة لاحتوائها على: {reason}"
         else:
-            category = task["category"] or classify(task["title"], task["description"])
-            db.update_task(task["id"], status="classified", category=category, agent="classifier")
-            msg = f"صُنّفت المهمة: {category}"
+            analysis = SmartTaskAnalyzer.analyze_and_classify(
+                f"{task['title']} {task['description']}"
+            )
+            category = task["category"] or analysis["category"]
+            current_priority = task.get("priority") or "normal"
+            priority = (
+                analysis["priority"]
+                if analysis["priority"] in {"urgent", "high"}
+                else current_priority
+            )
+            db.update_task(
+                task["id"], status="classified", category=category,
+                priority=priority, agent="classifier"
+            )
+            msg = (
+                f"صُنّفت المهمة: {category}؛ الأولوية: {priority}؛ "
+                f"الوكيل المقترح: {analysis['suggested_agent']}"
+            )
         db.add_activity("classifier", msg, task["id"])
         actions.append({"agent": "classifier", "task_id": task["id"], "action": msg})
     return actions
