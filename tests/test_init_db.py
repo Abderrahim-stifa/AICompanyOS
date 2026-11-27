@@ -115,3 +115,36 @@ class InitDatabaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_ui_settings_preserve_runtime_api_configuration():
+    import core.settings as runtime_settings
+
+    with tempfile.TemporaryDirectory() as directory:
+        db_path = str(Path(directory) / "company.sqlite3")
+        settings_path = Path(directory) / "settings.json"
+        with patch.object(init_db, "SETTINGS_FILE", settings_path), \
+             patch.object(runtime_settings, "SETTINGS_FILE", settings_path):
+            init_db.initialize_database(db_path)
+            runtime_settings.save_settings(runtime_settings.Settings(
+                port=8765, api_key="preserve-this-secret"
+            ))
+            init_db.save_ui_settings({"company_name": "Updated UI name"}, db_path)
+            saved = json.loads(settings_path.read_text(encoding="utf-8"))
+
+        assert saved["port"] == 8765
+        assert saved["api_key"] == "preserve-this-secret"
+        assert saved["company_name"] == "Updated UI name"
+
+
+def test_missing_settings_file_is_recreated():
+    with tempfile.TemporaryDirectory() as directory:
+        db_path = str(Path(directory) / "company.sqlite3")
+        settings_path = Path(directory) / "settings.json"
+        with patch.object(init_db, "SETTINGS_FILE", settings_path):
+            init_db.initialize_database(db_path)
+            settings_path.unlink()
+            init_db.initialize_database(db_path)
+            assert settings_path.exists()
+            saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            assert saved["company_name"] == "AICompanyOS"
