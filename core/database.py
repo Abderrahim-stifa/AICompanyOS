@@ -684,6 +684,21 @@ class Database:
             old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
             if old is None:
                 raise LookupError(f"client #{client_id} not found")
+            # Record every ON DELETE SET NULL relationship change explicitly.
+            for table, entity_type in (("tasks", "TASK"), ("projects", "PROJECT"), ("invoices", "INVOICE")):
+                linked_rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE client_id = ? ORDER BY id", (client_id,)
+                ).fetchall()
+                for linked_row in linked_rows:
+                    before = dict(linked_row)
+                    conn.execute(f"UPDATE {table} SET client_id = NULL WHERE id = ?", (before["id"],))
+                    after = dict(conn.execute(
+                        f"SELECT * FROM {table} WHERE id = ?", (before["id"],)
+                    ).fetchone())
+                    _audit(
+                        conn, "UNLINK_CLIENT", entity_type, before["id"], user_name,
+                        f"Detached from deleted client #{client_id}", old=before, new=after,
+                    )
             _audit(conn, "DELETE", "CLIENT", client_id, user_name, old["name"], old=dict(old))
             conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         log.info("client #%s deleted", client_id)
@@ -751,6 +766,19 @@ class Database:
             old = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
             if old is None:
                 raise LookupError(f"project #{project_id} not found")
+            linked_rows = conn.execute(
+                "SELECT * FROM tasks WHERE project_id = ? ORDER BY id", (project_id,)
+            ).fetchall()
+            for linked_row in linked_rows:
+                before = dict(linked_row)
+                conn.execute("UPDATE tasks SET project_id = NULL WHERE id = ?", (before["id"],))
+                after = dict(conn.execute(
+                    "SELECT * FROM tasks WHERE id = ?", (before["id"],)
+                ).fetchone())
+                _audit(
+                    conn, "UNLINK_PROJECT", "TASK", before["id"], user_name,
+                    f"Detached from deleted project #{project_id}", old=before, new=after,
+                )
             _audit(conn, "DELETE", "PROJECT", project_id, user_name, old["name"], old=dict(old))
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         log.info("project #%s deleted", project_id)
