@@ -25,6 +25,17 @@ class InitDatabaseTests(unittest.TestCase):
                 self.assertEqual(len(pipeline_agents), 5)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0], 1)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM activity_logs").fetchone()[0], 0)
+                indexes = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'index'"
+                    )
+                }
+                self.assertTrue({
+                    "idx_tasks_status",
+                    "idx_tasks_agent",
+                    "idx_logs_created",
+                    "idx_ledger_kind",
+                }.issubset(indexes))
 
             config = json.loads(settings_path.read_text(encoding="utf-8"))
             self.assertEqual(config["company_name"], "AICompanyOS")
