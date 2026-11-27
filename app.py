@@ -24,7 +24,12 @@ from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, Validati
 from pages.logs_page import show_logs_page
 from pages.audit_page import show_audit_page
 
-st.set_page_config(page_title="AICompanyOS", page_icon="🤖", layout="wide")
+st.set_page_config(
+    page_title="AICompanyOS",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 APP_VERSION = "0.3.7"
 
 TASK_AR = {
@@ -452,15 +457,64 @@ def page_tasks(company: Company) -> None:
 
     tab_create, tab_update, tab_delete = st.tabs(["إضافة مهمة", "تعديل / إسناد", "حذف مهمة"])
     with tab_create:
+        st.subheader("التحليل الذكي قبل إنشاء المهمة")
+        with st.form("task_analysis_form"):
+            analysis_input = st.text_area(
+                "اكتب وصف المهمة لتحليلها",
+                key="task_analysis_input",
+                max_chars=5000,
+                placeholder="مثال: ترجمة 500 كلمة بشكل عاجل للعميل...",
+            )
+            analyze_submitted = st.form_submit_button("🧠 تحليل المهمة")
+        if analyze_submitted:
+            if not analysis_input.strip():
+                st.warning("أدخل وصف المهمة أولاً.")
+            else:
+                st.session_state["task_creation_analysis"] = SmartTaskAnalyzer.analyze_and_classify(
+                    analysis_input
+                )
+                st.session_state["task_creation_analysis_text"] = analysis_input
+        analysis = st.session_state.get("task_creation_analysis")
+        analyzed_text = st.session_state.get("task_creation_analysis_text", "")
+        if analysis:
+            role_name = next(
+                (item["name"] for item in role_agents.AGENTS.values()
+                 if item["agent_key"] == analysis["suggested_role_agent"]),
+                analysis["suggested_role_agent"],
+            )
+            st.success(
+                f"الفئة: {analysis['category']} · الأولوية المقترحة: {analysis['priority']} "
+                f"· وكيل Pipeline: {analysis['suggested_agent']} · الوكيل المتخصص: {role_name}"
+            )
+            st.caption("هذا اقتراح محلي بالكلمات المفتاحية، وليس تنفيذاً أو إسناداً تلقائياً.")
+
         with st.form("task_create_form", clear_on_submit=True):
             title = st.text_input("عنوان المهمة", max_chars=200)
-            description = st.text_area("الوصف", max_chars=5000)
+            description = st.text_area(
+                "الوصف", value=analyzed_text, max_chars=5000, key="task_create_description"
+            )
             source = st.text_input("المصدر")
-            category = st.text_input("التصنيف")
+            category = st.text_input(
+                "التصنيف", value=analysis["category"] if analysis else ""
+            )
             price = st.number_input("القيمة", min_value=0.0, step=1.0)
-            priority = st.selectbox("الأولوية", ["low", "normal", "high", "urgent"], index=1)
-            pipeline_agent = st.selectbox("وكيل Pipeline", ["— بدون إسناد —", *pipeline_names])
-            if st.form_submit_button("إنشاء المهمة"):
+            priorities = ["low", "normal", "high", "urgent"]
+            suggested_priority = analysis["priority"] if analysis else "normal"
+            priority = st.selectbox(
+                "الأولوية", priorities,
+                index=priorities.index(suggested_priority),
+            )
+            suggested_pipeline = analysis["suggested_agent"] if analysis else ""
+            pipeline_options = ["— بدون إسناد —", *pipeline_names]
+            pipeline_index = pipeline_options.index(suggested_pipeline) if suggested_pipeline in pipeline_options else 0
+            pipeline_agent = st.selectbox(
+                "وكيل Pipeline", pipeline_options, index=pipeline_index
+            )
+            role_options = list(role_labels)
+            role_agent = st.selectbox(
+                "الوكيل المتخصص (اختياري — يتطلب تأكيدك)", role_options
+            )
+            if st.form_submit_button("💾 إنشاء المهمة"):
                 try:
                     created = company.add_task({
                         "title": title, "description": description, "source": source,
@@ -472,6 +526,14 @@ def page_tasks(company: Company) -> None:
                         company.update_task(created["id"], {
                             "agent": pipeline_agent, "user_name": user_name,
                         })
+                    selected_role_key = role_labels[role_agent]
+                    if selected_role_key:
+                        company.assign_role_agent(
+                            created["id"], selected_role_key, user_name=user_name
+                        )
+                    st.session_state.pop("task_creation_analysis", None)
+                    st.session_state.pop("task_creation_analysis_text", None)
+                    st.session_state.pop("task_analysis_input", None)
                     notify_and_refresh(f"تم إنشاء المهمة رقم {created['id']}")
                 except (ValidationError, LookupError, ValueError) as exc:
                     fail(exc)
