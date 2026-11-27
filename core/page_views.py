@@ -929,13 +929,16 @@ def page_finance(company: Company) -> None:
     if invoices:
         invoice_rows = []
         for invoice in invoices:
-            balance = round(float(invoice["amount"]) - float(invoice["paid_amount"]), 2)
+            net_paid = float(invoice["net_paid_amount"])
+            balance = round(float(invoice["amount"]) - net_paid, 2)
             invoice_rows.append({
                 "رقم الفاتورة": invoice["invoice_number"],
                 "المهمة": invoice["task_title"],
                 "العميل": invoice["client_name"],
                 "الإجمالي": f"{invoice['amount']:,.2f} {invoice['currency']}",
-                "المدفوع": f"{invoice['paid_amount']:,.2f} {invoice['currency']}",
+                "المحصّل": f"{invoice['paid_amount']:,.2f} {invoice['currency']}",
+                "المسترجع": f"{invoice['refunded_amount']:,.2f} {invoice['currency']}",
+                "الصافي": f"{net_paid:,.2f} {invoice['currency']}",
                 "المتبقي": f"{balance:,.2f} {invoice['currency']}",
                 "الحالة": invoice["status"],
                 "الاستحقاق": invoice["due_date"] or "—",
@@ -949,7 +952,7 @@ def page_finance(company: Company) -> None:
             "الفاتورة", list(invoice_options), key="invoice_action_select"
         )
         selected_invoice = invoice_options[selected_invoice_label]
-        paid_amount = float(selected_invoice["paid_amount"])
+        paid_amount = float(selected_invoice["net_paid_amount"])
         remaining = round(float(selected_invoice["amount"]) - paid_amount, 2)
         if selected_invoice["status"] == "draft":
             st.warning("هذه فاتورة مسودة؛ يجب إصدارها قبل تسجيل أي دفعة.")
@@ -1002,6 +1005,21 @@ def page_finance(company: Company) -> None:
             st.success("تم سداد الفاتورة بالكامل.")
         elif selected_invoice["status"] == "void":
             st.info("الفاتورة ملغاة ولا تقبل دفعات.")
+        if selected_invoice["status"] in {"draft", "issued", "overdue"} and float(selected_invoice["paid_amount"]) == 0:
+            with st.expander("إلغاء الفاتورة"):
+                st.warning("سيتم تغيير حالة الفاتورة إلى ملغاة. لا يمكن إلغاء فاتورة عليها دفعات مسجلة.")
+                void_reason = st.text_input("سبب الإلغاء", key=f"void_reason_{selected_invoice['id']}", max_chars=500)
+                if st.button("تأكيد إلغاء الفاتورة", key=f"void_invoice_{selected_invoice['id']}"):
+                    try:
+                        company.void_invoice(
+                            selected_invoice["id"], void_reason,
+                            user_name=CurrentUser.get_username(),
+                        )
+                        st.success("تم إلغاء الفاتورة وتسجيل العملية في سجل التدقيق.")
+                        st.rerun()
+                    except (ValidationError, LookupError, ValueError) as exc:
+                        fail(exc)
+
         payments = company.db.list_payments(selected_invoice["id"])
         if payments:
             st.caption("سجل دفعات الفاتورة")
@@ -1015,6 +1033,69 @@ def page_finance(company: Company) -> None:
                 } for item in payments],
                 width="stretch", hide_index=True,
             )
+
+            payment_refunds = company.db.list_refunds()
+            refund_totals = {}
+            for refund in payment_refunds:
+                refund_totals[refund["payment_id"]] = (
+                    refund_totals.get(refund["payment_id"], 0.0) + float(refund["amount"])
+                )
+            refundable_payments = [
+                item for item in payments
+                if float(item["amount"]) - refund_totals.get(item["id"], 0.0) > 0.000001
+            ]
+            if refundable_payments:
+                st.subheader("إرجاع دفعة")
+                refund_options = {
+                    f"#{item['id']} — {item['amount']:,.2f} {item['currency']} ({item['payment_date']})":
+                    item for item in refundable_payments
+                }
+                selected_payment_label = st.selectbox(
+                    "الدفعة المراد إرجاعها", list(refund_options),
+                    key=f"refund_payment_select_{selected_invoice['id']}",
+                )
+                selected_payment = refund_options[selected_payment_label]
+                refundable_balance = round(
+                    float(selected_payment["amount"]) - refund_totals.get(selected_payment["id"], 0.0), 2
+                )
+                with st.form(f"refund_payment_form_{selected_payment['id']}"):
+                    refund_amount = st.number_input(
+                        "مبلغ الإرجاع", min_value=0.01, max_value=refundable_balance,
+                        value=refundable_balance, step=1.0,
+                    )
+                    refund_date = st.date_input("تاريخ الإرجاع")
+                    refund_reference = st.text_input("مرجع الإرجاع (اختياري)", max_chars=100)
+                    refund_note = st.text_input("سبب / ملاحظة الإرجاع", max_chars=500)
+                    if st.form_submit_button("تسجيل الإرجاع"):
+                        try:
+                            company.refund_payment(
+                                selected_payment["id"],
+                                {
+                                    "amount": refund_amount,
+                                    "refund_date": refund_date.isoformat(),
+                                    "reference": refund_reference,
+                                    "note": refund_note,
+                                },
+                                user_name=CurrentUser.get_username(),
+                            )
+                            st.success("تم تسجيل الإرجاع كعملية مصروف وربطه بالدفعة الأصلية.")
+                            st.rerun()
+                        except (ValidationError, LookupError, ValueError) as exc:
+                            fail(exc)
+            refunds = company.db.list_refunds()
+            invoice_refunds = [item for item in refunds if item["invoice_id"] == selected_invoice["id"]]
+            if invoice_refunds:
+                st.caption("سجل المبالغ المسترجعة")
+                st.dataframe(
+                    [{
+                        "الدفعة": item["payment_id"],
+                        "التاريخ": item["refund_date"],
+                        "المبلغ": f"{item['amount']:,.2f} {selected_invoice['currency']}",
+                        "المرجع": item["reference"] or "—",
+                        "ملاحظة": item["note"],
+                    } for item in invoice_refunds],
+                    width="stretch", hide_index=True,
+                )
 
 
 def page_settings(company: Company) -> None:
