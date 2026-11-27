@@ -471,10 +471,12 @@ class Database:
                     status: str | None = None, category: str | None = None,
                     agent: str | None = None, priority: str | None = None,
                     source: str | None = None, price: float | None = None,
-                    currency: str | None = None, user_name: str = "system") -> dict:
+                    currency: str | None = None, client_id=_UNSET,
+                    project_id=_UNSET, user_name: str = "system") -> dict:
         values = {"title": title, "description": description, "priority": priority,
                   "source": source, "price": price, "currency": currency,
-                  "status": status, "category": category, "agent": agent}
+                  "status": status, "category": category, "agent": agent,
+                  "client_id": client_id, "project_id": project_id}
         sets, params = ["updated_at = ?"], [_now()]
         for field, value in values.items():
             if value is _UNSET or (value is None and field not in {"client_id", "project_id"}):
