@@ -497,11 +497,11 @@ class Database:
             if old_row is None:
                 raise LookupError("task #{} not found".format(task_id))
             old_values = dict(old_row)
-            if client_id is not None and conn.execute(
+            if client_id is not _UNSET and client_id is not None and conn.execute(
                 "SELECT 1 FROM clients WHERE id = ?", (client_id,)
             ).fetchone() is None:
                 raise LookupError(f"client #{client_id} not found")
-            if project_id is not None and conn.execute(
+            if project_id is not _UNSET and project_id is not None and conn.execute(
                 "SELECT 1 FROM projects WHERE id = ?", (project_id,)
             ).fetchone() is None:
                 raise LookupError(f"project #{project_id} not found")
