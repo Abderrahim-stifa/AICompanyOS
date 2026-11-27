@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.backup import create_backup, list_backups, restore_backup
+from core.backup import create_backup, inspect_backup, list_backups, restore_backup
 
 
 class BackupTests(unittest.TestCase):
@@ -42,12 +42,41 @@ class BackupTests(unittest.TestCase):
 
         with sqlite3.connect(self.db) as conn:
             restored = conn.execute("SELECT value FROM records").fetchone()[0]
-        safety = self.db.with_name("company.before-restore.db")
+        safety_files = list(self.db.parent.glob("company.before-restore-*.db"))
         self.assertEqual(restored, "original")
-        self.assertTrue(safety.exists())
-        with sqlite3.connect(safety) as conn:
+        self.assertEqual(len(safety_files), 1)
+        with sqlite3.connect(safety_files[0]) as conn:
             preserved = conn.execute("SELECT value FROM records").fetchone()[0]
         self.assertEqual(preserved, "changed")
+
+    def test_inspect_backup_returns_integrity_and_file_metadata(self):
+        backup = create_backup(str(self.db), str(self.root / "backups"))
+        info = inspect_backup(str(backup))
+        self.assertEqual(info["name"], backup.name)
+        self.assertEqual(info["integrity"], "ok")
+        self.assertIn("records", info["tables"])
+        self.assertGreater(info["size_bytes"], 0)
+        self.assertTrue(info["modified_at"])
+
+    def test_corrupt_backup_is_rejected_before_active_database_changes(self):
+        corrupt = self.root / "backups" / "aicompanyos-corrupt.db"
+        corrupt.parent.mkdir(parents=True, exist_ok=True)
+        corrupt.write_text("not a sqlite database", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            inspect_backup(str(corrupt))
+        with self.assertRaises(ValueError):
+            restore_backup(str(corrupt), str(self.db))
+        with sqlite3.connect(self.db) as conn:
+            value = conn.execute("SELECT value FROM records").fetchone()[0]
+        self.assertEqual(value, "original")
+        self.assertEqual(list(self.db.parent.glob("company.before-restore-*.db")), [])
+
+    def test_repeated_restores_keep_distinct_pre_restore_safety_copies(self):
+        backup = create_backup(str(self.db), str(self.root / "backups"))
+        restore_backup(str(backup), str(self.db))
+        restore_backup(str(backup), str(self.db))
+        safety_files = list(self.db.parent.glob("company.before-restore-*.db"))
+        self.assertEqual(len(safety_files), 2)
 
     def test_restore_creates_missing_target_directory(self):
         backup = create_backup(str(self.db), str(self.root / "backups"))
