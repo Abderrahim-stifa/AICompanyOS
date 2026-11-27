@@ -48,9 +48,12 @@ class TaskService(BaseService, ITaskService):
             "priority": lambda value: clean_choice(value, "priority", ("low", "normal", "high", "urgent")),
             "price": lambda value: clean_amount(value, "price"),
             "currency": lambda value: clean_currency(value),
+            "client_id": lambda value: clean_id(value, "client_id") if value not in ("", None) else None,
+            "project_id": lambda value: clean_id(value, "project_id") if value not in ("", None) else None,
         }
+        nullable_links = {"client_id", "project_id"}
         cleaned = {key: cleaner(data[key]) for key, cleaner in allowed.items()
-                   if key in data and data[key] is not None}
+                   if key in data and (data[key] is not None or key in nullable_links)}
         old_task = None
         if not isinstance(self.task_repository, TaskRepository):
             old_task = self.task_repository.get_by_id(task_id)
