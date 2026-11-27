@@ -31,8 +31,8 @@ domain_labels = {label: key for key, label in DOMAINS.items()}
 
 with st.expander("إنشاء مسودة أولية بمساعدة الذكاء الاصطناعي", expanded=False):
     st.caption(
-        "لن يتم إرسال أي طلب إلى مزود خارجي إلا بعد الضغط على زر التوليد، "
-        "ومع تفعيل OpenAI. بدون ذلك يستخدم النظام القواعد المحلية."
+        "قد يُرسل وصفك إلى OpenAI إذا كان المزود الخارجي مفعّلاً؛ لا تضع بيانات سرية. "
+        "لن يحدث الإرسال إلا بعد الضغط على زر التوليد. بدون ذلك يستخدم النظام القواعد المحلية."
     )
     with st.form("generate_deliverable_draft_form"):
         draft_domain_label = st.selectbox("مجال المسودة", list(domain_labels), key="draft_domain")
