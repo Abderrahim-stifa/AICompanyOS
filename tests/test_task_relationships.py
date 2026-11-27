@@ -135,6 +135,17 @@ def test_legacy_database_migration_preserves_existing_tasks(tmp_path):
     assert task["client_id"] is None
     assert task["project_id"] is None
 
+    # Foreign keys added by ALTER TABLE must remain active on upgraded databases.
+    client = db.add_client({"name": "Migrated client", "email": "", "phone": ""})
+    project = db.add_project({
+        "name": "Migrated project", "client_id": client["id"], "status": "new",
+        "budget": 0, "currency": "MAD",
+    })
+    service = TaskService(db, default_currency="MAD")
+    service.update_task(1, {"client_id": client["id"], "project_id": project["id"]})
+    db.delete_client(client["id"])
+    assert db.get_task(1)["client_id"] is None
+    assert db.get_task(1)["project_id"] == project["id"]
 
 
 def test_search_matches_linked_client_and_project_names():
