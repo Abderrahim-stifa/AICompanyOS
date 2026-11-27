@@ -1,4 +1,5 @@
 """Persistence and approval-gate tests for role-agent runs."""
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -100,3 +101,28 @@ class RoleAgentRunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_task_deletion_preserves_audit_snapshots_of_cascaded_role_runs(self):
+        first = self.db.create_role_agent_run(
+            self.task["id"], "engineer", self.plan, requested_by="planner-a"
+        )
+        second = self.db.create_role_agent_run(
+            self.task["id"], "engineer", {**self.plan, "title": "Second plan"},
+            requested_by="planner-b",
+        )
+
+        self.db.delete_task(self.task["id"], user_name="task-owner")
+
+        self.assertEqual(self.db.list_role_agent_runs(self.task["id"]), [])
+        events = [
+            row for row in self.db.list_system_logs(limit=100)
+            if row["action"] == "CASCADE_DELETE"
+            and row["entity_type"] == "ROLE_AGENT_RUN"
+        ]
+        self.assertEqual({row["entity_id"] for row in events}, {first["id"], second["id"]})
+        snapshots = {row["entity_id"]: json.loads(row["old_values"]) for row in events}
+        self.assertEqual(snapshots[first["id"]]["plan_json"], json.dumps(self.plan, ensure_ascii=False))
+        self.assertEqual(snapshots[first["id"]]["requested_by"], "planner-a")
+        self.assertEqual(snapshots[second["id"]]["requested_by"], "planner-b")
+        self.assertTrue(all(row["user_name"] == "task-owner" for row in events))
