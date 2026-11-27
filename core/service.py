@@ -128,6 +128,32 @@ class Company:
             user_name=clean_text(user_name, "user_name", max_len=100),
         )
 
+    def void_invoice(self, invoice_id, reason, user_name="system") -> dict:
+        invoice_id = clean_id(invoice_id, "invoice id")
+        reason = clean_text(reason, "reason", max_len=500)
+        return self.db.void_invoice(
+            invoice_id, reason,
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
+    def refund_payment(self, payment_id, data: dict, user_name="system") -> dict:
+        from datetime import date
+        if not isinstance(data, dict):
+            raise ValidationError("refund must be an object")
+        refund_date = clean_text(data.get("refund_date"), "refund_date", max_len=10)
+        try:
+            date.fromisoformat(refund_date)
+        except ValueError:
+            raise ValidationError("refund_date must use YYYY-MM-DD format") from None
+        reference = clean_text(data.get("reference"), "reference", required=False, max_len=100)
+        note = clean_text(data.get("note"), "note", required=False, max_len=500)
+        return self.db.refund_payment(
+            clean_id(payment_id, "payment id"),
+            clean_amount(data.get("amount"), "amount", allow_zero=False),
+            refund_date, reference or None, note,
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
     # ledger
     def add_ledger(self, data: dict, user_name: str = "system") -> dict:
         return self.db.add_ledger_entry(
