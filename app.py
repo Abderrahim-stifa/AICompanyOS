@@ -585,6 +585,39 @@ def page_tasks(company: Company) -> None:
                     except (ValidationError, LookupError, ValueError) as exc:
                         fail(exc)
 
+            st.markdown("---")
+            st.subheader("🧾 الفواتير والتقارير")
+            st.caption("يمكنك طباعة هذه الفاتورة أو حفظها كملف PDF مباشرة من المتصفح.")
+
+            if st.button(
+                "📄 عرض فاتورة المهمة الحالية",
+                type="secondary",
+                key="show_selected_task_invoice",
+            ):
+                client_name = "عميل نقدي"
+                client_id = selected.get("client_id")
+                if client_id:
+                    clients = company.db.list_clients()
+                    client_match = next(
+                        (client for client in clients if client["id"] == client_id),
+                        None,
+                    )
+                    if client_match:
+                        client_name = client_match["name"]
+
+                display_task = {**selected, "client_name": client_name}
+                invoice_html = generate_invoice_html(
+                    task=display_task,
+                    company_name=(
+                        getattr(company.settings, "company_name", None) or "AICompanyOS"
+                    ),
+                    currency=(
+                        selected.get("currency")
+                        or getattr(company.settings, "default_currency", "ر.س")
+                    ),
+                )
+                components.html(invoice_html, height=700, scrolling=True)
+
     with tab_delete:
         if not tasks:
             st.info("لا توجد مهام لحذفها.")
