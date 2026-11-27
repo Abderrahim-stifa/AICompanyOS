@@ -52,6 +52,41 @@ CREATE TABLE IF NOT EXISTS ledger (
     created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number TEXT NOT NULL UNIQUE,
+    task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    task_title TEXT NOT NULL,
+    client_name TEXT NOT NULL DEFAULT '',
+    amount REAL NOT NULL CHECK (amount > 0),
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'issued', 'partially_paid', 'paid', 'overdue', 'void')),
+    issue_date TEXT,
+    due_date TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+    amount REAL NOT NULL CHECK (amount > 0),
+    currency TEXT NOT NULL,
+    payment_date TEXT NOT NULL,
+    method TEXT NOT NULL DEFAULT 'other',
+    reference TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    ledger_id INTEGER REFERENCES ledger(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_reference
+    ON payments(reference) WHERE reference IS NOT NULL AND reference != '';
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+
 CREATE TABLE IF NOT EXISTS clients (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
@@ -741,6 +776,132 @@ class Database:
     def list_agents(self) -> list[dict]:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM agents ORDER BY name")]
+
+    # ---- invoices and payments ----
+    def create_invoice(self, task_id: int, due_date: str | None = None,
+                       notes: str = "", user_name: str = "system") -> dict:
+        """Create a draft invoice with immutable task/client name and amount snapshots."""
+        with self.connect() as conn:
+            task = conn.execute(
+                """SELECT t.id, t.title, t.price, t.currency, t.client_id,
+                          COALESCE(c.name, '') AS client_name
+                   FROM tasks t LEFT JOIN clients c ON c.id = t.client_id
+                   WHERE t.id = ?""", (task_id,)
+            ).fetchone()
+            if task is None:
+                raise LookupError(f"task #{task_id} not found")
+            if float(task["price"]) <= 0:
+                raise ValueError("task price must be greater than zero to create an invoice")
+            now = _now()
+            cur = conn.execute(
+                """INSERT INTO invoices
+                   (invoice_number, task_id, client_id, task_title, client_name, amount,
+                    currency, status, due_date, notes, created_at, updated_at)
+                   VALUES ('PENDING', ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)""",
+                (task_id, task["client_id"], task["title"], task["client_name"],
+                 task["price"], task["currency"], due_date, notes, now, now),
+            )
+            invoice_id = cur.lastrowid
+            invoice_number = f"INV-{datetime.now(timezone.utc):%Y%m%d}-{invoice_id:06d}"
+            conn.execute("UPDATE invoices SET invoice_number = ? WHERE id = ?",
+                         (invoice_number, invoice_id))
+            row = dict(conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone())
+            _audit(conn, "CREATE", "INVOICE", invoice_id, user_name,
+                   f"Created draft {invoice_number}", new=row)
+        return row
+
+    def issue_invoice(self, invoice_id: int, user_name: str = "system") -> dict:
+        with self.connect() as conn:
+            old_row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+            if old_row is None:
+                raise LookupError(f"invoice #{invoice_id} not found")
+            old = dict(old_row)
+            if old["status"] != "draft":
+                raise ValueError("only draft invoices can be issued")
+            now = _now()
+            conn.execute(
+                "UPDATE invoices SET status = 'issued', issue_date = ?, updated_at = ? WHERE id = ?",
+                (now[:10], now, invoice_id),
+            )
+            new = dict(conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone())
+            _audit(conn, "ISSUE", "INVOICE", invoice_id, user_name,
+                   f"Issued {new['invoice_number']}", old=old, new=new)
+        return new
+
+    def record_payment(self, invoice_id: int, amount: float, currency: str,
+                       payment_date: str, method: str = "other", reference: str | None = None,
+                       note: str = "", user_name: str = "system") -> dict:
+        """Record a payment and its income ledger row atomically; references are idempotent."""
+        with self.connect() as conn:
+            invoice_row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+            if invoice_row is None:
+                raise LookupError(f"invoice #{invoice_id} not found")
+            invoice = dict(invoice_row)
+            if invoice["status"] not in {"issued", "partially_paid", "overdue"}:
+                raise ValueError("payments can only be recorded against issued invoices")
+            if currency != invoice["currency"]:
+                raise ValueError("payment currency must match invoice currency")
+            if amount <= 0:
+                raise ValueError("payment amount must be greater than zero")
+            if reference:
+                existing = conn.execute("SELECT id FROM payments WHERE reference = ?",
+                                         (reference,)).fetchone()
+                if existing:
+                    raise ValueError(f"payment reference already exists: {reference}")
+            paid = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE invoice_id = ?",
+                (invoice_id,),
+            ).fetchone()["total"]
+            remaining = round(float(invoice["amount"]) - float(paid), 2)
+            if amount > remaining + 0.000001:
+                raise ValueError(f"payment exceeds remaining balance ({remaining:.2f})")
+            now = _now()
+            ledger_cur = conn.execute(
+                """INSERT INTO ledger (task_id, kind, amount, currency, note, created_at)
+                   VALUES (?, 'income', ?, ?, ?, ?)""",
+                (invoice["task_id"], amount, currency,
+                 f"Payment for {invoice['invoice_number']}" + (f" — {note}" if note else ""), now),
+            )
+            payment_cur = conn.execute(
+                """INSERT INTO payments
+                   (invoice_id, amount, currency, payment_date, method, reference, note, ledger_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (invoice_id, amount, currency, payment_date, method, reference or None,
+                 note, ledger_cur.lastrowid, now),
+            )
+            payment = dict(conn.execute("SELECT * FROM payments WHERE id = ?",
+                                        (payment_cur.lastrowid,)).fetchone())
+            new_status = "paid" if amount >= remaining - 0.000001 else "partially_paid"
+            conn.execute("UPDATE invoices SET status = ?, updated_at = ? WHERE id = ?",
+                         (new_status, now, invoice_id))
+            updated_invoice = dict(conn.execute("SELECT * FROM invoices WHERE id = ?",
+                                                 (invoice_id,)).fetchone())
+            _audit(conn, "CREATE", "PAYMENT", payment["id"], user_name,
+                   f"Payment {amount:g} {currency} for {invoice['invoice_number']}",
+                   new=payment)
+            _audit(conn, "PAYMENT_STATUS", "INVOICE", invoice_id, user_name,
+                   f"{invoice['status']} -> {new_status}", old=invoice, new=updated_invoice)
+        return payment
+
+    def list_invoices(self) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT i.*,
+                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_amount
+                   FROM invoices i ORDER BY i.id DESC"""
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_payments(self, invoice_id: int | None = None) -> list[dict]:
+        query = """SELECT p.*, i.invoice_number FROM payments p
+                   JOIN invoices i ON i.id = p.invoice_id"""
+        params = ()
+        if invoice_id is not None:
+            query += " WHERE p.invoice_id = ?"
+            params = (invoice_id,)
+        query += " ORDER BY p.id DESC"
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute(query, params)]
 
     # ---- ledger ----
     def add_ledger_entry(self, entry: dict, user_name: str = "system") -> dict:
