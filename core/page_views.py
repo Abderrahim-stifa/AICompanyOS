@@ -21,6 +21,7 @@ from core.invoice import generate_invoice_html
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.database import Database
+from core.task_search import search_tasks
 from core.ui_helpers import notify_and_refresh
 from core.ui_theme import apply_custom_theme
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
@@ -87,6 +88,18 @@ hr{border-color:#34436d;}
 @st.cache_resource
 def get_company() -> Company:
     return Company()
+
+
+@st.cache_data(ttl=10)
+def get_tasks(db_path: str) -> list[dict]:
+    """Cache task reads briefly using the stable database path as the key."""
+    return Database(db_path).list_tasks()
+
+
+def invalidate_task_caches() -> None:
+    """Clear task and dashboard snapshots immediately after task mutations."""
+    get_tasks.clear()
+    get_dashboard_data.clear()
 
 
 @st.cache_data(ttl=30)
@@ -409,6 +422,7 @@ def confirm_delete_dialog(company: Company, task_id: int, user_name: str) -> Non
         if st.button("نعم، احذف المهمة", type="primary", key="confirm_task_delete"):
             try:
                 company.delete_task(task_id, user_name=user_name)
+                invalidate_task_caches()
                 notify_and_refresh("تم حذف المهمة وتسجيل العملية.")
             except (LookupError, ValueError) as exc:
                 fail(exc)
@@ -430,7 +444,7 @@ def page_tasks(company: Company) -> None:
     CurrentUser.set_username(user_name)
     user_name = CurrentUser.get_username()
 
-    tasks = company.db.list_tasks()
+    tasks = get_tasks(company.settings.db_path)
     agents = company.db.list_agents()
     role_agents = company.db.list_role_agents()
     pipeline_names = [item["name"] for item in agents]
@@ -439,12 +453,21 @@ def page_tasks(company: Company) -> None:
     }}
 
     st.subheader("جميع المهام")
+    search_query = st.text_input(
+        "🔍 بحث سريع في المهام (العنوان، الوصف، أو العميل)",
+        key="global_task_search",
+    )
     status_filter = st.selectbox(
         "تصفية حسب الحالة", ["الكل", *TASK_STATUSES],
         format_func=lambda value: value if value == "الكل" else ar(TASK_AR, value),
         key="tasks_status_filter",
     )
-    visible_tasks = [item for item in tasks if status_filter == "الكل" or item["status"] == status_filter]
+    clients_for_search = company.db.list_clients() if search_query.strip() else []
+    searched_tasks = search_tasks(tasks, search_query, clients_for_search)
+    visible_tasks = [
+        item for item in searched_tasks
+        if status_filter == "الكل" or item["status"] == status_filter
+    ]
     role_agent_names = {item["agent_key"]: item["role"] for item in role_agents}
     task_rows = []
     for item in visible_tasks:
@@ -541,6 +564,7 @@ def page_tasks(company: Company) -> None:
                         company.assign_role_agent(
                             created["id"], selected_role_key, user_name=user_name
                         )
+                    invalidate_task_caches()
                     st.session_state.pop("task_creation_analysis", None)
                     st.session_state.pop("task_creation_analysis_text", None)
                     st.session_state.pop("task_analysis_input", None)
@@ -591,6 +615,7 @@ def page_tasks(company: Company) -> None:
                             company.assign_role_agent(selected["id"], role_key, user_name=user_name)
                         elif not role_key and selected.get("role_agent_key"):
                             company.unassign_role_agent(selected["id"], user_name=user_name)
+                        invalidate_task_caches()
                         notify_and_refresh("تم تحديث المهمة.")
                     except (ValidationError, LookupError, ValueError) as exc:
                         fail(exc)
