@@ -114,7 +114,7 @@ def make_handler(company: Company):
                 if m and method == "GET":
                     return self._send(200, company.db.get_task(int(m.group(1))))
                 if m and method == "PATCH":
-                    return self._send(200, company.update_task(m.group(1), self._read_json()))
+                    return self._send(200, company.update_task(m.group(1), self._read_json(), user_name="api"))
                 if path == "/agents" and method == "GET":
                     return self._send(200, company.db.list_agents())
                 if path == "/ledger" and method == "GET":
@@ -227,7 +227,7 @@ def main(argv=None) -> int:
             show(company.db.list_tasks(args.status))
         elif args.cmd == "set-status":
             data = {"status": args.status, "category": args.category, "agent": args.agent}
-            show(company.update_task(args.id, {k: v for k, v in data.items() if v is not None}))
+            show(company.update_task(args.id, {k: v for k, v in data.items() if v is not None}, user_name="cli"))
         elif args.cmd == "ledger":
             show(company.add_ledger({
                 "kind": args.kind, "amount": args.amount, "currency": args.currency,
