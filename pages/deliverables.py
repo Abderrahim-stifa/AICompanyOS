@@ -6,6 +6,8 @@ import streamlit as st
 from core.auth_context import CurrentUser
 from core.database import Database
 from core.deliverables import DOMAINS, DeliverableStore
+from core.deliverable_drafts import generate_domain_draft
+from core.llm_provider import ProviderError
 from core.page_views import get_company
 
 st.title("مساحات العمل والمخرجات")
@@ -27,7 +29,64 @@ project_label = st.selectbox("المشروع", list(project_map), key="deliverab
 project_id = project_map[project_label]
 domain_labels = {label: key for key, label in DOMAINS.items()}
 
-with st.expander("إنشاء مخرج جديد", expanded=True):
+with st.expander("إنشاء مسودة أولية بمساعدة الذكاء الاصطناعي", expanded=False):
+    st.caption(
+        "لن يتم إرسال أي طلب إلى مزود خارجي إلا بعد الضغط على زر التوليد، "
+        "ومع تفعيل OpenAI. بدون ذلك يستخدم النظام القواعد المحلية."
+    )
+    with st.form("generate_deliverable_draft_form"):
+        draft_domain_label = st.selectbox("مجال المسودة", list(domain_labels), key="draft_domain")
+        draft_brief = st.text_area("صف المطلوب من المسودة", height=120, max_chars=3500)
+        generate_clicked = st.form_submit_button("توليد مسودة للمراجعة")
+    if generate_clicked:
+        try:
+            draft = generate_domain_draft(domain_labels[draft_domain_label], draft_brief)
+            st.session_state["pending_deliverable_draft"] = {
+                **draft,
+                "project_id": project_id,
+            }
+        except (ProviderError, ValueError) as exc:
+            st.error(str(exc))
+
+pending_draft = st.session_state.get("pending_deliverable_draft")
+if pending_draft and pending_draft.get("project_id") == project_id:
+    st.subheader("معاينة المسودة قبل الحفظ")
+    st.caption(
+        f"المزود: {pending_draft['metadata']['provider']} · "
+        f"النموذج: {pending_draft['metadata']['model']} · "
+        f"التحقق: {pending_draft['metadata']['verification']}"
+    )
+    st.warning("هذه مسودة غير متحقق منها. راجع المحتوى والافتراضات قبل حفظها؛ لن تعتمد تلقائياً.")
+    st.markdown(pending_draft["content"])
+    st.markdown("**الافتراضات المسجلة**")
+    for assumption in pending_draft["assumptions"]:
+        st.markdown(f"- {assumption}")
+    if pending_draft["metadata"]["provider"] == "offline":
+        st.info("تم إنشاء هذه المسودة محلياً بقواعد وقوالب، وليس بواسطة نموذج LLM.")
+    if st.button("حفظ المسودة كإصدار أول", key="save_generated_deliverable"):
+        try:
+            item = store.create(
+                project_id,
+                pending_draft["domain"],
+                pending_draft["title"],
+                pending_draft["content"],
+                CurrentUser.get_username(),
+                [],
+                pending_draft["assumptions"],
+                pending_draft["metadata"],
+            )
+            st.session_state.pop("pending_deliverable_draft", None)
+            st.success(f"تم حفظ المسودة #{item['id']} كإصدار أول غير معتمد.")
+            st.rerun()
+        except (ValueError, LookupError) as exc:
+            st.error(str(exc))
+elif pending_draft:
+    st.warning("المسودة مرتبطة بمشروع آخر. اختر ذلك المشروع لحفظها أو تخلّص منها.")
+    if st.button("حذف المسودة غير المحفوظة", key="discard_stale_deliverable_draft"):
+        st.session_state.pop("pending_deliverable_draft", None)
+        st.rerun()
+
+with st.expander("إنشاء مخرج جديد يدوياً", expanded=not bool(pending_draft)):
     with st.form("create_deliverable_form", clear_on_submit=True):
         domain_label = st.selectbox("مجال العمل", list(domain_labels))
         title = st.text_input("عنوان المخرج", max_chars=200)
@@ -69,6 +128,13 @@ for item in items:
                 st.markdown(f"- {assumption}")
         else:
             st.caption("لم تُسجل افتراضات.")
+        if item["generation_metadata"]:
+            metadata = item["generation_metadata"]
+            st.caption(
+                f"مصدر المسودة: {metadata.get('provider', 'غير محدد')} · "
+                f"{metadata.get('model', '—')} · "
+                f"التحقق: {metadata.get('verification', 'غير معروف')}"
+            )
         if item["reviewer"]:
             st.caption(f"المراجع: {item['reviewer']} · الملاحظة: {item['review_note'] or '—'}")
 
@@ -123,6 +189,7 @@ for item in items:
                 st.write(version["content"])
                 st.write("المصادر:", version["sources_json"])
                 st.write("الافتراضات:", version["assumptions_json"])
+                st.write("بيانات المصدر:", version["generation_metadata"])
 
         if item["domain"] == "architecture":
             st.warning("هذا تصور أولي فقط؛ لا يصلح للتنفيذ أو الترخيص دون مراجعة واعتماد مهني من معماري/مهندس مؤهل.")
