@@ -1,7 +1,9 @@
 """Database backups using SQLite's online backup API (safe while the app is running)."""
 from __future__ import annotations
 
+import os
 import sqlite3
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -76,24 +78,48 @@ def auto_backup_if_needed(
     return create_backup(db_path, backup_dir)
 
 
-def restore_backup(backup_file: str, db_path: str) -> None:
-    """Replace the database with a backup. The current DB is saved next to it first."""
+def inspect_backup(backup_file: str) -> dict:
+    """Validate a SQLite backup and return safe metadata for a restore preview."""
     backup = Path(backup_file)
-    if not backup.exists():
+    if not backup.is_file():
         raise FileNotFoundError(f"backup not found: {backup_file}")
-
-    # Make sure the file really is a SQLite database before touching anything.
-    check = sqlite3.connect(backup)
     try:
-        if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            raise ValueError("backup file is corrupted")
-    finally:
-        check.close()
+        check = sqlite3.connect(f"file:{backup.resolve().as_posix()}?mode=ro", uri=True)
+        try:
+            integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                raise ValueError("backup file is corrupted")
+            tables = [
+                row[0] for row in check.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                )
+            ]
+        finally:
+            check.close()
+    except sqlite3.DatabaseError:
+        raise ValueError("backup file is not a readable SQLite database") from None
+    stat = backup.stat()
+    return {
+        "name": backup.name,
+        "size_bytes": stat.st_size,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
+        "integrity": integrity,
+        "tables": tables,
+    }
+
+
+def restore_backup(backup_file: str, db_path: str) -> Path | None:
+    """Atomically restore a validated backup after preserving the active database."""
+    backup = Path(backup_file)
+    inspect_backup(str(backup))
 
     target = Path(db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    safety = None
     if target.exists():
-        safety = target.with_name(f"{target.stem}.before-restore{SUFFIX}")
+        safety = target.with_name(
+            f"{target.stem}.before-restore-{datetime.now():%Y%m%d-%H%M%S-%f}{SUFFIX}"
+        )
         src = sqlite3.connect(db_path)
         dst = sqlite3.connect(safety)
         try:
@@ -102,11 +128,29 @@ def restore_backup(backup_file: str, db_path: str) -> None:
             dst.close()
             src.close()
 
-    src = sqlite3.connect(backup)
-    dst = sqlite3.connect(db_path)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.stem}.restore-", suffix=SUFFIX, dir=target.parent
+    )
+    os.close(fd)
+    temporary = Path(temporary_name)
     try:
-        src.backup(dst)
+        src = sqlite3.connect(backup)
+        dst = sqlite3.connect(temporary)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+        check = sqlite3.connect(temporary)
+        try:
+            if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("restored database failed integrity check")
+        finally:
+            check.close()
+        os.replace(temporary, target)
     finally:
-        dst.close()
-        src.close()
+        if temporary.exists():
+            temporary.unlink()
+
     log.info("database restored from %s", backup.name)
+    return safety
