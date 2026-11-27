@@ -87,3 +87,15 @@ def test_api_task_patch_uses_api_audit_actor():
     company.update_task.assert_called_once_with(
         "7", {"status": "done"}, user_name="api"
     )
+
+
+def test_cli_status_update_uses_cli_audit_actor(monkeypatch):
+    import cli
+
+    company = Mock()
+    monkeypatch.setattr(cli, "Company", Mock(return_value=company))
+    monkeypatch.setattr(cli, "show", Mock())
+    assert cli.main(["set-status", "7", "done"]) == 0
+    company.update_task.assert_called_once_with(
+        "7", {"status": "done"}, user_name="cli"
+    )
