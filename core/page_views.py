@@ -554,8 +554,9 @@ def page_tasks(company: Company) -> None:
         format_func=lambda value: value if value == "الكل" else ar(TASK_AR, value),
         key="tasks_status_filter",
     )
-    clients_for_search = company.db.list_clients() if search_query.strip() else []
-    searched_tasks = search_tasks(tasks, search_query, clients_for_search)
+    clients_for_search = clients if search_query.strip() else []
+    projects_for_search = projects if search_query.strip() else []
+    searched_tasks = search_tasks(tasks, search_query, clients_for_search, projects_for_search)
     visible_tasks = [
         item for item in searched_tasks
         if status_filter == "الكل" or item["status"] == status_filter
@@ -744,7 +745,14 @@ def page_tasks(company: Company) -> None:
                     if client_match:
                         client_name = client_match["name"]
 
-                display_task = {**selected, "client_name": client_name}
+                project_name = next(
+                    (project["name"] for project in projects
+                     if project["id"] == selected.get("project_id")),
+                    "",
+                )
+                display_task = {
+                    **selected, "client_name": client_name, "project_name": project_name
+                }
                 invoice_html = generate_invoice_html(
                     task=display_task,
                     company_name=(
