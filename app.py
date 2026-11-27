@@ -20,6 +20,7 @@ from core.smart_agent import SmartTaskAnalyzer
 from core.invoice import generate_invoice_html
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
+from core.database import Database
 from core.ui_helpers import notify_and_refresh
 from core.ui_theme import apply_custom_theme
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
@@ -94,6 +95,18 @@ def get_company() -> Company:
     return Company()
 
 
+@st.cache_data(ttl=30)
+def get_dashboard_data(db_path: str) -> dict:
+    """Cache dashboard reads briefly; use the path as a stable cache key."""
+    db = Database(db_path)
+    return {
+        "clients": db.list_clients(),
+        "projects": db.list_projects(),
+        "tasks": db.list_tasks(),
+        "summary": db.summary(),
+    }
+
+
 def ar(mapping: dict, key: str) -> str:
     return mapping.get(key, key)
 
@@ -120,8 +133,11 @@ def fail(exc: Exception) -> None:
 def page_dashboard(company: Company) -> None:
     st.header("لوحة التحكم")
     db = company.db
-    clients, projects, tasks = db.list_clients(), db.list_projects(), db.list_tasks()
-    summary = db.summary()
+    dashboard_data = get_dashboard_data(db.path)
+    clients = dashboard_data["clients"]
+    projects = dashboard_data["projects"]
+    tasks = dashboard_data["tasks"]
+    summary = dashboard_data["summary"]
 
     role_overview = build_agent_overview(tasks)
     active_role_agents = sum(item["status"] == "active" for item in role_overview)
