@@ -199,6 +199,8 @@ class Database:
         conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA temp_store = MEMORY")
+        conn.execute("PRAGMA cache_size = -8000")  # ~8 MB page cache per connection
         try:
             if immediate:
                 conn.execute("BEGIN IMMEDIATE")
@@ -254,6 +256,16 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_task ON invoices(task_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_client ON invoices(client_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_activity_logs_entity "
+                "ON activity_logs(entity_type, entity_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ledger_currency_kind ON ledger(currency, kind)"
+            )
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
                 DEFAULT_AGENTS,
@@ -1112,16 +1124,21 @@ class Database:
     def list_invoices(self) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT i.*,
-                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_amount,
-                          COALESCE((SELECT SUM(r.amount) FROM refunds r
-                                    JOIN payments p ON p.id = r.payment_id
-                                    WHERE p.invoice_id = i.id), 0) AS refunded_amount,
-                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
-                          - COALESCE((SELECT SUM(r.amount) FROM refunds r
-                                      JOIN payments p ON p.id = r.payment_id
-                                      WHERE p.invoice_id = i.id), 0) AS net_paid_amount
-                   FROM invoices i ORDER BY i.id DESC"""
+                """WITH paid AS (
+                       SELECT invoice_id, SUM(amount) AS total FROM payments GROUP BY invoice_id
+                   ), refunded AS (
+                       SELECT p.invoice_id, SUM(r.amount) AS total
+                       FROM refunds r JOIN payments p ON p.id = r.payment_id
+                       GROUP BY p.invoice_id
+                   )
+                   SELECT i.*,
+                          COALESCE(paid.total, 0) AS paid_amount,
+                          COALESCE(refunded.total, 0) AS refunded_amount,
+                          COALESCE(paid.total, 0) - COALESCE(refunded.total, 0) AS net_paid_amount
+                   FROM invoices i
+                   LEFT JOIN paid ON paid.invoice_id = i.id
+                   LEFT JOIN refunded ON refunded.invoice_id = i.id
+                   ORDER BY i.id DESC"""
             ).fetchall()
         return [dict(row) for row in rows]
 
