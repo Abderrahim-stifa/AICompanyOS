@@ -11,6 +11,7 @@ from .logs import get_logger
 from .validator import TASK_STATUSES, ValidationError
 
 log = get_logger("database")
+_UNSET = object()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -90,8 +91,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id);
 
 CREATE TABLE IF NOT EXISTS role_agent_runs (
@@ -200,6 +199,14 @@ class Database:
     def add_task(self, task: dict, user_name: str = "system") -> dict:
         now = _now()
         with self.connect() as conn:
+            if task.get("client_id") is not None and conn.execute(
+                "SELECT 1 FROM clients WHERE id = ?", (task["client_id"],)
+            ).fetchone() is None:
+                raise LookupError(f"client #{task['client_id']} not found")
+            if task.get("project_id") is not None and conn.execute(
+                "SELECT 1 FROM projects WHERE id = ?", (task["project_id"],)
+            ).fetchone() is None:
+                raise LookupError(f"project #{task['project_id']} not found")
             cur = conn.execute(
                 """INSERT INTO tasks
                    (title, description, source, category, price, currency, status, priority,
@@ -470,7 +477,7 @@ class Database:
                   "status": status, "category": category, "agent": agent}
         sets, params = ["updated_at = ?"], [_now()]
         for field, value in values.items():
-            if value is None:
+            if value is _UNSET or (value is None and field not in {"client_id", "project_id"}):
                 continue
             if field == "priority" and value not in {"low", "normal", "high", "urgent"}:
                 raise ValidationError("priority must be low, normal, high or urgent")
