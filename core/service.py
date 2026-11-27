@@ -83,6 +83,51 @@ class Company:
         result = clean_text(result, "result", max_len=20000)
         return self.db.save_task_result(task_id, result)
 
+    # invoices and payments
+    def create_invoice(self, task_id, due_date=None, notes="", user_name="system") -> dict:
+        from datetime import date
+        task_id = clean_id(task_id, "task id")
+        if due_date:
+            due_date = clean_text(due_date, "due_date", max_len=10)
+            try:
+                date.fromisoformat(due_date)
+            except ValueError:
+                raise ValidationError("due_date must use YYYY-MM-DD format") from None
+        notes = clean_text(notes, "notes", required=False, max_len=1000)
+        return self.db.create_invoice(
+            task_id, due_date=due_date, notes=notes,
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
+    def issue_invoice(self, invoice_id, user_name="system") -> dict:
+        return self.db.issue_invoice(
+            clean_id(invoice_id, "invoice id"),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
+    def record_payment(self, invoice_id, data: dict, user_name="system") -> dict:
+        from datetime import date
+        if not isinstance(data, dict):
+            raise ValidationError("payment must be an object")
+        payment_date = clean_text(data.get("payment_date"), "payment_date", max_len=10)
+        try:
+            date.fromisoformat(payment_date)
+        except ValueError:
+            raise ValidationError("payment_date must use YYYY-MM-DD format") from None
+        method = clean_choice(
+            data.get("method") or "other", "method",
+            ("cash", "bank_transfer", "card", "online", "other"),
+        )
+        reference = clean_text(data.get("reference"), "reference", required=False, max_len=100)
+        return self.db.record_payment(
+            clean_id(invoice_id, "invoice id"),
+            clean_amount(data.get("amount"), "amount", allow_zero=False),
+            clean_currency(data.get("currency") or self.settings.default_currency),
+            payment_date, method, reference or None,
+            clean_text(data.get("note"), "note", required=False, max_len=500),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
     # ledger
     def add_ledger(self, data: dict, user_name: str = "system") -> dict:
         return self.db.add_ledger_entry(
