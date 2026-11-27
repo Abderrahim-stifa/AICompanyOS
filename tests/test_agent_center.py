@@ -28,6 +28,16 @@ class AgentCenterTests(unittest.TestCase):
         # Pipeline agent is not included in any role-agent count.
         self.assertEqual(sum(row["task_count"] for row in result), 3)
 
+    def test_canonical_role_assignment_is_counted_not_pipeline_agent(self):
+        result = build_agent_overview([
+            {"agent": "executor", "role_agent_key": "engineer", "status": "assigned"},
+            {"agent": "manager", "role_agent_key": None, "status": "in_progress"},
+        ])
+        by_key = {row["key"]: row for row in result}
+        self.assertEqual(by_key["engineer"]["task_count"], 1)
+        self.assertEqual(by_key["engineer"]["active_task_count"], 1)
+        self.assertEqual(sum(row["task_count"] for row in result), 1)
+
     def test_disabled_agent_status_has_priority(self):
         result = build_agent_overview(
             [{"agent": "engineer", "status": "in_progress"}],
