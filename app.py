@@ -17,6 +17,7 @@ from core.agent_center import build_agent_overview
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.ui_helpers import notify_and_refresh
+from core.ui_theme import apply_custom_theme
 from core.validator import CURRENCIES, PROJECT_STATUSES, TASK_STATUSES, ValidationError
 from pages.logs_page import show_logs_page
 from pages.audit_page import show_audit_page
@@ -615,6 +616,7 @@ def main() -> None:
     company = get_company()
     preferences = load_ui_settings(company.settings.db_path)
     st.markdown(RTL_CSS, unsafe_allow_html=True)
+    apply_custom_theme()
     if not preferences["dark_mode"]:
         st.markdown("""
         <style>
