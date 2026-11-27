@@ -170,3 +170,47 @@ if plan:
                 )
             else:
                 st.error(f"تعذر حفظ الطلب: {exc}")
+
+
+# Optional model-assisted draft. No external action is performed from this workspace.
+if routing:
+    with st.expander("مسودة تحليل اختيارية عبر مزود LLM", expanded=False):
+        st.caption(
+            "الوضع الافتراضي محلي وبدون اتصال. إذا ضُبط AICOS_LLM_PROVIDER=openai "
+            "وAICOS_LLM_API_KEY في بيئة التشغيل، سيُرسل وصف الطلب إلى OpenAI بعد "
+            "ضغط الزر أدناه. لا تضع المفاتيح داخل المستودع."
+        )
+        if st.button("إنشاء مسودة تحليل", key="create_llm_draft"):
+            try:
+                from core.llm_provider import create_supervised_plan
+                st.session_state["multidisciplinary_llm_draft"] = create_supervised_plan(
+                    saved_brief
+                )
+            except (ValueError, RuntimeError) as exc:
+                st.error(str(exc))
+        llm_draft = st.session_state.get("multidisciplinary_llm_draft")
+        if llm_draft:
+            st.caption(
+                f"المزود: {llm_draft['provider']} · النموذج: {llm_draft['model']} "
+                f"· الحالة: {llm_draft['mode']}"
+            )
+            st.subheader(llm_draft["summary"])
+            for section, label in (
+                ("deliverables", "المخرجات المقترحة"),
+                ("assumptions", "الافتراضات"),
+                ("risks", "المخاطر"),
+                ("questions", "الأسئلة المفتوحة"),
+            ):
+                st.markdown(f"**{label}**")
+                for item in llm_draft[section]:
+                    st.markdown(f"- {item}")
+            if llm_draft.get("fallback_reason"):
+                st.warning(
+                    "تعذر استخدام المزود الخارجي؛ تم الرجوع إلى التخطيط المحلي: "
+                    + llm_draft["fallback_reason"]
+                )
+            st.warning(llm_draft["notice"])
+            st.info(
+                "المخرجات مسودة فقط وتتطلب مراجعة وموافقة بشرية. "
+                "لا يتم تنفيذ أوامر أو تغييرات خارجية أو مالية."
+            )
