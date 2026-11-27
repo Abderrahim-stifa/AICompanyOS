@@ -75,7 +75,23 @@ class RoleAgentRunTests(unittest.TestCase):
         completed = self.db.complete_role_agent_run(run["id"], "Implemented and tested.", "alice")
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["result"], "Implemented and tested.")
+
+        task = self.db.get_task(self.task["id"])
+        self.assertEqual(task["status"], "done")
+        self.assertEqual(task["result"], "Implemented and tested.")
+        self.assertIsNotNone(task["completed_at"])
+        self.assertEqual(task["completed_at"], task["updated_at"])
+        self.assertIsNotNone(task["assigned_at"])
+
         logs = self.db.list_system_logs(limit=100)
+        task_completion = [
+            row for row in logs
+            if row["action"] == "COMPLETE"
+            and row["entity_type"] == "TASK"
+            and row["entity_id"] == self.task["id"]
+        ]
+        self.assertEqual(len(task_completion), 1)
+        self.assertEqual(task_completion[0]["user_name"], "alice")
         actions = [row["action"] for row in logs]
         self.assertIn("AGENT_PLAN_CREATED", actions)
         self.assertIn("AGENT_PLAN_REVIEWED", actions)
