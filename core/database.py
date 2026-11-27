@@ -496,11 +496,28 @@ class Database:
                 raise LookupError(f"role-agent run #{run_id} not found")
             if row["status"] != "approved":
                 raise ValidationError("يجب اعتماد الخطة قبل تسجيل النتيجة.")
+            old_task_row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (row["task_id"],)
+            ).fetchone()
+            if old_task_row is None:
+                raise LookupError(f"task #{row['task_id']} not found")
+            old_task = dict(old_task_row)
             conn.execute(
                 """UPDATE role_agent_runs SET status = 'completed', result = ?, completed_at = ?
                    WHERE id = ?""",
                 (result.strip(), now, run_id),
             )
+            conn.execute(
+                """UPDATE tasks SET result = ?, status = 'done',
+                   completed_at = ?, updated_at = ? WHERE id = ?""",
+                (result.strip(), now, now, row["task_id"]),
+            )
+            new_task = dict(conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (row["task_id"],)
+            ).fetchone())
+            _audit(conn, "COMPLETE", "TASK", row["task_id"], actor,
+                   f"إكمال المهمة بنتيجة تشغيل الوكيل #{run_id}",
+                   old=old_task, new=new_task)
             conn.execute(
                 """INSERT INTO activity_logs
                    (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
