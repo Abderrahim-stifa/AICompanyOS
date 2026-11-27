@@ -105,6 +105,19 @@ class Company:
             user_name=clean_text(user_name, "user_name", max_len=100),
         )
 
+    def mark_overdue_invoices(self, today=None, user_name="system") -> list[dict]:
+        from datetime import date
+        if today is not None:
+            today = clean_text(today, "today", max_len=10)
+            try:
+                date.fromisoformat(today)
+            except ValueError:
+                raise ValidationError("today must use YYYY-MM-DD format") from None
+        return self.db.mark_overdue_invoices(
+            today=today,
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
     def record_payment(self, invoice_id, data: dict, user_name="system") -> dict:
         from datetime import date
         if not isinstance(data, dict):

@@ -841,6 +841,42 @@ class Database:
                    f"Issued {new['invoice_number']}", old=old, new=new)
         return new
 
+    def mark_overdue_invoices(self, today: str | None = None,
+                              user_name: str = "system") -> list[dict]:
+        """Transition due issued/part-paid invoices to overdue, auditing each change."""
+        from datetime import date
+
+        business_date = today or datetime.now(timezone.utc).date().isoformat()
+        try:
+            date.fromisoformat(business_date)
+        except (TypeError, ValueError):
+            raise ValueError("today must use YYYY-MM-DD format") from None
+
+        transitioned = []
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM invoices
+                   WHERE status IN ('issued', 'partially_paid')
+                     AND due_date IS NOT NULL AND due_date < ?
+                   ORDER BY id""",
+                (business_date,),
+            ).fetchall()
+            for row in rows:
+                old = dict(row)
+                now = _now()
+                conn.execute(
+                    "UPDATE invoices SET status = 'overdue', updated_at = ? WHERE id = ?",
+                    (now, old["id"]),
+                )
+                new = dict(conn.execute(
+                    "SELECT * FROM invoices WHERE id = ?", (old["id"],)
+                ).fetchone())
+                _audit(conn, "OVERDUE", "INVOICE", old["id"], user_name,
+                       f"Invoice {old['invoice_number']} passed due date {old['due_date']}",
+                       old=old, new=new)
+                transitioned.append(new)
+        return transitioned
+
     def record_payment(self, invoice_id: int, amount: float, currency: str,
                        payment_date: str, method: str = "other", reference: str | None = None,
                        note: str = "", user_name: str = "system") -> dict:
