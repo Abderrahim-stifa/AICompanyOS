@@ -122,6 +122,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _audit(conn, action: str, entity_type: str, entity_id: int | None, user_name: str,
+           details: str = "", old=None, new=None) -> None:
+    """Write one audit row on `conn`, so it commits atomically with the change itself."""
+    conn.execute(
+        """INSERT INTO activity_logs
+           (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (action, entity_type, entity_id, user_name, details,
+         json.dumps(old, ensure_ascii=False, default=str) if old is not None else None,
+         json.dumps(new, ensure_ascii=False, default=str) if new is not None else None,
+         _now()),
+    )
+
+
 class Database:
     def __init__(self, path: str):
         self.path = path
@@ -540,41 +554,47 @@ class Database:
         return [dict(row) for row in rows]
 
     # ---- clients ----
-    def add_client(self, client: dict) -> dict:
+    def add_client(self, client: dict, user_name: str = "system") -> dict:
         with self.connect() as conn:
             cur = conn.execute(
                 "INSERT INTO clients (name, email, phone, created_at) VALUES (:name, :email, :phone, :now)",
                 {**client, "now": _now()},
             )
-            row = conn.execute("SELECT * FROM clients WHERE id = ?", (cur.lastrowid,)).fetchone()
+            row = dict(conn.execute("SELECT * FROM clients WHERE id = ?", (cur.lastrowid,)).fetchone())
+            _audit(conn, "CREATE", "CLIENT", row["id"], user_name, row["name"], new=row)
         log.info("client #%s added: %s", row["id"], client["name"])
-        return dict(row)
+        return row
 
     def list_clients(self) -> list[dict]:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM clients ORDER BY id DESC")]
 
-    def update_client(self, client_id: int, client: dict) -> dict:
+    def update_client(self, client_id: int, client: dict, user_name: str = "system") -> dict:
         with self.connect() as conn:
-            cur = conn.execute(
+            old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+            if old is None:
+                raise LookupError(f"client #{client_id} not found")
+            conn.execute(
                 "UPDATE clients SET name = :name, email = :email, phone = :phone WHERE id = :id",
                 {**client, "id": client_id},
             )
-            if cur.rowcount == 0:
-                raise LookupError(f"client #{client_id} not found")
-            row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+            row = dict(conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone())
+            _audit(conn, "UPDATE", "CLIENT", client_id, user_name, row["name"],
+                   old=dict(old), new=row)
         log.info("client #%s updated", client_id)
-        return dict(row)
+        return row
 
-    def delete_client(self, client_id: int) -> None:
+    def delete_client(self, client_id: int, user_name: str = "system") -> None:
         with self.connect() as conn:
-            cur = conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
-            if cur.rowcount == 0:
+            old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+            if old is None:
                 raise LookupError(f"client #{client_id} not found")
+            _audit(conn, "DELETE", "CLIENT", client_id, user_name, old["name"], old=dict(old))
+            conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         log.info("client #%s deleted", client_id)
 
     # ---- projects ----
-    def add_project(self, project: dict) -> dict:
+    def add_project(self, project: dict, user_name: str = "system") -> dict:
         if project.get("client_id") is not None:
             with self.connect() as conn:
                 if conn.execute("SELECT 1 FROM clients WHERE id = ?", (project["client_id"],)).fetchone() is None:
@@ -586,6 +606,8 @@ class Database:
                 {**project, "now": _now()},
             )
             project_id = cur.lastrowid
+            created = dict(conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone())
+            _audit(conn, "CREATE", "PROJECT", project_id, user_name, created["name"], new=created)
         log.info("project #%s added: %s", project_id, project["name"])
         return self.list_projects(project_id)[0]
 
@@ -600,33 +622,42 @@ class Database:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute(query, params)]
 
-    def update_project(self, project_id: int, project: dict) -> dict:
+    def update_project(self, project_id: int, project: dict, user_name: str = "system") -> dict:
         if project.get("client_id") is not None:
             with self.connect() as conn:
                 if conn.execute("SELECT 1 FROM clients WHERE id = ?", (project["client_id"],)).fetchone() is None:
                     raise LookupError(f"client #{project['client_id']} not found")
         with self.connect() as conn:
-            cur = conn.execute(
+            old = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if old is None:
+                raise LookupError(f"project #{project_id} not found")
+            conn.execute(
                 """UPDATE projects SET name = :name, client_id = :client_id, status = :status,
                           budget = :budget, currency = :currency WHERE id = :id""",
                 {**project, "id": project_id},
             )
-            if cur.rowcount == 0:
-                raise LookupError(f"project #{project_id} not found")
+            new = dict(conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone())
+            _audit(conn, "UPDATE", "PROJECT", project_id, user_name, new["name"],
+                   old=dict(old), new=new)
         log.info("project #%s updated", project_id)
         return self.list_projects(project_id)[0]
 
-    def set_project_status(self, project_id: int, status: str) -> None:
+    def set_project_status(self, project_id: int, status: str, user_name: str = "system") -> None:
         with self.connect() as conn:
-            cur = conn.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
-            if cur.rowcount == 0:
+            old = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if old is None:
                 raise LookupError(f"project #{project_id} not found")
+            conn.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
+            _audit(conn, "UPDATE", "PROJECT", project_id, user_name, old["name"],
+                   old={"status": old["status"]}, new={"status": status})
 
-    def delete_project(self, project_id: int) -> None:
+    def delete_project(self, project_id: int, user_name: str = "system") -> None:
         with self.connect() as conn:
-            cur = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-            if cur.rowcount == 0:
+            old = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if old is None:
                 raise LookupError(f"project #{project_id} not found")
+            _audit(conn, "DELETE", "PROJECT", project_id, user_name, old["name"], old=dict(old))
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         log.info("project #%s deleted", project_id)
 
     def seed_demo(self) -> bool:
@@ -684,7 +715,7 @@ class Database:
             return [dict(r) for r in conn.execute("SELECT * FROM agents ORDER BY name")]
 
     # ---- ledger ----
-    def add_ledger_entry(self, entry: dict) -> dict:
+    def add_ledger_entry(self, entry: dict, user_name: str = "system") -> dict:
         if entry.get("task_id") is not None:
             self.get_task(entry["task_id"])
         with self.connect() as conn:
@@ -693,9 +724,11 @@ class Database:
                    VALUES (:task_id, :kind, :amount, :currency, :note, :now)""",
                 {**entry, "now": _now()},
             )
-            row = conn.execute("SELECT * FROM ledger WHERE id = ?", (cur.lastrowid,)).fetchone()
+            row = dict(conn.execute("SELECT * FROM ledger WHERE id = ?", (cur.lastrowid,)).fetchone())
+            _audit(conn, "CREATE", "LEDGER", row["id"], user_name,
+                   f"{row['kind']} {row['amount']:g} {row['currency']}", new=row)
         log.info("ledger %s %.2f %s", entry["kind"], entry["amount"], entry["currency"])
-        return dict(row)
+        return row
 
     def list_ledger(self) -> list[dict]:
         with self.connect() as conn:

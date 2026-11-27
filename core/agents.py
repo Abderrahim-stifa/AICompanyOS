@@ -13,6 +13,7 @@ from __future__ import annotations
 from .database import Database
 from .logs import get_logger
 from .smart_agent import SmartTaskAnalyzer
+from .text_match import has_word
 
 log = get_logger("agents")
 
@@ -50,7 +51,7 @@ def classify(title: str, description: str = "") -> str:
 def blocked_reason(title: str, description: str = "") -> str | None:
     text = f"{title} {description}".lower()
     for word in BLOCKED_KEYWORDS:
-        if word.lower() in text:
+        if has_word(text, word.lower()):
             return word
     return None
 
@@ -105,7 +106,7 @@ def run_accountant(db: Database) -> list[dict]:
         db.add_ledger_entry({
             "task_id": task["id"], "kind": "income", "amount": task["price"],
             "currency": task["currency"], "note": "مسجّل تلقائياً: مهمة مكتملة",
-        })
+        }, user_name="accountant")
         msg = f"سُجّل دخل {task['price']:g} {task['currency']}"
         db.add_activity("accountant", msg, task["id"])
         actions.append({"agent": "accountant", "task_id": task["id"], "action": msg})

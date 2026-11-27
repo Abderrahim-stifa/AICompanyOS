@@ -7,6 +7,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .text_match import has_word
+
 
 CATEGORY_KEYWORDS = {
     "translation": ("ترجم", "ترجمة", "translate", "translation", "subtitle"),
@@ -65,14 +67,14 @@ class SmartTaskAnalyzer:
     def analyze_and_classify(task_description: str) -> dict:
         desc = _normalize(task_description)
         scores = {
-            category: sum(1 for word in words if _normalize(word) in desc)
+            category: sum(1 for word in words if has_word(desc, _normalize(word)))
             for category, words in CATEGORY_KEYWORDS.items()
         }
         category = max(scores, key=scores.get) if scores and max(scores.values()) else "general"
 
-        if any(_normalize(word) in desc for word in URGENCY_KEYWORDS):
+        if any(has_word(desc, _normalize(word)) for word in URGENCY_KEYWORDS):
             priority = "urgent"
-        elif any(_normalize(word) in desc for word in HIGH_PRIORITY_KEYWORDS):
+        elif any(has_word(desc, _normalize(word)) for word in HIGH_PRIORITY_KEYWORDS):
             priority = "high"
         else:
             priority = "normal"
