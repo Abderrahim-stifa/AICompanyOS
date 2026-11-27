@@ -22,7 +22,10 @@ CATEGORY_KEYWORDS = {
 URGENCY_KEYWORDS = ("عاجل", "فوراً", "فورا", "مستعجل", "اليوم", "حالاً", "حالا", "asap", "urgent")
 HIGH_PRIORITY_KEYWORDS = ("مهم", "أسبوع", "اسبوع", "قريباً", "قريبا", "هذا الأسبوع", "this week")
 
-AGENT_BY_CATEGORY = {
+# Pipeline agents coordinate processing; role agents own business-specialist work.
+# Keep these mappings separate because tasks.agent and tasks.role_agent_key are
+# different database fields with different responsibilities.
+PIPELINE_AGENT_BY_CATEGORY = {
     "translation": "finder",
     "programming": "executor",
     "marketing": "manager",
@@ -32,6 +35,18 @@ AGENT_BY_CATEGORY = {
     "data": "finder",
     "video": "executor",
     "general": "classifier",
+}
+
+ROLE_AGENT_BY_CATEGORY = {
+    "translation": "research",
+    "programming": "engineer",
+    "marketing": "marketing",
+    "accounting": "accountant",
+    "design": "engineer",
+    "writing": "consultant",
+    "data": "market_analyst",
+    "video": "marketing",
+    "general": "consultant",
 }
 
 
@@ -62,13 +77,16 @@ class SmartTaskAnalyzer:
         else:
             priority = "normal"
 
-        suggested_agent = AGENT_BY_CATEGORY[category]
+        suggested_agent = PIPELINE_AGENT_BY_CATEGORY[category]
+        suggested_role_agent = ROLE_AGENT_BY_CATEGORY[category]
         return {
             "category": category,
             "priority": priority,
             "suggested_agent": suggested_agent,
+            "suggested_role_agent": suggested_role_agent,
             "analysis_note": (
                 f"تحليل محلي بالكلمات المفتاحية: الفئة '{category}'، "
-                f"الأولوية '{priority}'، والوكيل المقترح '{suggested_agent}'."
+                f"الأولوية '{priority}'، وكيل Pipeline المقترح '{suggested_agent}'، "
+                f"والوكيل المتخصص المقترح '{suggested_role_agent}'."
             ),
         }
