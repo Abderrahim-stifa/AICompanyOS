@@ -84,7 +84,7 @@ def inspect_backup(backup_file: str) -> dict:
     if not backup.is_file():
         raise FileNotFoundError(f"backup not found: {backup_file}")
     try:
-        check = sqlite3.connect(f"file:{backup.resolve().as_posix()}?mode=ro", uri=True)
+        check = sqlite3.connect(f"{backup.resolve().as_uri()}?mode=ro", uri=True)
         try:
             integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
             if integrity != "ok":
