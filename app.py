@@ -477,11 +477,9 @@ def page_tasks(company: Company) -> None:
         analysis = st.session_state.get("task_creation_analysis")
         analyzed_text = st.session_state.get("task_creation_analysis_text", "")
         if analysis:
-            role_name = next(
-                (item["name"] for item in role_agents.AGENTS.values()
-                 if item["agent_key"] == analysis["suggested_role_agent"]),
-                analysis["suggested_role_agent"],
-            )
+            role_name = role_agents.AGENTS.get(
+                analysis["suggested_role_agent"], {}
+            ).get("name_ar", analysis["suggested_role_agent"])
             st.success(
                 f"الفئة: {analysis['category']} · الأولوية المقترحة: {analysis['priority']} "
                 f"· وكيل Pipeline: {analysis['suggested_agent']} · الوكيل المتخصص: {role_name}"
