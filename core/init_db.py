@@ -83,7 +83,8 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
     target = db_path or settings.db_path
     # Schema, seeding and settings are idempotent but costly; run once per database file
     # per process (callers invoke this on every Streamlit rerun).
-    if target in _READY and target != ":memory:" and Path(target).exists():
+    if (target in _READY and target != ":memory:" and Path(target).exists()
+            and SETTINGS_FILE.exists()):
         return target
     Database(target).init()
 
