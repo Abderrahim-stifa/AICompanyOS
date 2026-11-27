@@ -837,6 +837,65 @@ def page_finance(company: Company) -> None:
             except (ValidationError, LookupError) as exc:
                 fail(exc)
 
+    ledger_entries = company.db.list_ledger()
+    if ledger_entries:
+        st.subheader("تعديل أو حذف قيد مالي")
+        ledger_labels = {
+            f"#{item['id']} — {KIND_AR[item['kind']]} {item['amount']:,.2f} {item['currency']}": item
+            for item in ledger_entries
+        }
+        selected_label = st.selectbox("اختر القيد المالي", list(ledger_labels), key="ledger_edit_choice")
+        selected_entry = ledger_labels[selected_label]
+        with st.form("edit_ledger_form"):
+            edit_kind = st.selectbox(
+                "النوع", list(KIND_AR),
+                index=list(KIND_AR).index(selected_entry["kind"]),
+                format_func=lambda value: KIND_AR[value],
+            )
+            edit_amount = st.number_input(
+                "المبلغ", min_value=0.01, step=1.0, value=float(selected_entry["amount"])
+            )
+            edit_currency = st.selectbox(
+                "العملة", CURRENCIES,
+                index=CURRENCIES.index(selected_entry["currency"])
+                if selected_entry["currency"] in CURRENCIES else 0,
+            )
+            current_task = next(
+                (label for label, value in task_options.items()
+                 if value == selected_entry["task_id"]),
+                "— بدون مهمة —",
+            )
+            edit_task = st.selectbox(
+                "المهمة المرتبطة", list(task_options),
+                index=list(task_options).index(current_task),
+            )
+            edit_note = st.text_input("ملاحظة", value=selected_entry["note"], max_chars=500)
+            if st.form_submit_button("حفظ تعديل القيد"):
+                try:
+                    company.update_ledger(
+                        selected_entry["id"],
+                        {"kind": edit_kind, "amount": edit_amount, "currency": edit_currency,
+                         "task_id": task_options[edit_task], "note": edit_note},
+                        user_name=CurrentUser.get_username(),
+                    )
+                    st.success("تم تعديل القيد وتسجيل التغيير في سجل التدقيق.")
+                    st.rerun()
+                except (ValidationError, LookupError) as exc:
+                    fail(exc)
+
+        with st.expander("حذف قيد مالي"):
+            st.warning("سيُحذف القيد من الدفتر، مع الاحتفاظ بلقطة بياناته في سجل التدقيق.")
+            confirm_delete = st.checkbox("أؤكد حذف هذا القيد", key="confirm_ledger_delete")
+            if st.button("حذف القيد المحدد", key="delete_ledger_entry") and confirm_delete:
+                try:
+                    company.delete_ledger(
+                        selected_entry["id"], user_name=CurrentUser.get_username()
+                    )
+                    st.success("تم حذف القيد وتسجيل العملية.")
+                    st.rerun()
+                except LookupError as exc:
+                    fail(exc)
+
 
 def page_settings(company: Company) -> None:
     st.header("⚙️ الإعدادات والنسخ الاحتياطي")
