@@ -82,6 +82,19 @@ CREATE TABLE IF NOT EXISTS payments (
     ledger_id INTEGER REFERENCES ledger(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS refunds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    amount REAL NOT NULL CHECK (amount > 0),
+    refund_date TEXT NOT NULL,
+    reference TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    ledger_id INTEGER REFERENCES ledger(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refunds_reference
+    ON refunds(reference) WHERE reference IS NOT NULL AND reference != '';
+CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_reference
     ON payments(reference) WHERE reference IS NOT NULL AND reference != '';
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
@@ -883,11 +896,134 @@ class Database:
                    f"{invoice['status']} -> {new_status}", old=invoice, new=updated_invoice)
         return payment
 
+    def void_invoice(self, invoice_id: int, reason: str, user_name: str = "system") -> dict:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+            if row is None:
+                raise LookupError(f"invoice #{invoice_id} not found")
+            old = dict(row)
+            paid = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE invoice_id = ?",
+                (invoice_id,),
+            ).fetchone()["total"]
+            if float(paid) > 0:
+                raise ValueError("invoice with recorded payments cannot be voided; refund payments first")
+            if old["status"] not in {"draft", "issued", "overdue"}:
+                raise ValueError("only unpaid draft or issued invoices can be voided")
+            now = _now()
+            conn.execute(
+                "UPDATE invoices SET status = 'void', notes = ?, updated_at = ? WHERE id = ?",
+                ((old["notes"] + "\nVoid: " + reason).strip(), now, invoice_id),
+            )
+            new = dict(conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone())
+            _audit(conn, "VOID", "INVOICE", invoice_id, user_name,
+                   f"Voided {old['invoice_number']}: {reason}", old=old, new=new)
+        return new
+
+    def refund_payment(self, payment_id: int, amount: float, refund_date: str,
+                       reference: str | None = None, note: str = "",
+                       user_name: str = "system") -> dict:
+        """Record a partial/full refund and matching expense ledger entry atomically."""
+        with self.connect() as conn:
+            payment_row = conn.execute(
+                """SELECT p.*, i.task_id, i.invoice_number, i.id AS invoice_id,
+                          i.amount AS invoice_amount
+                   FROM payments p JOIN invoices i ON i.id = p.invoice_id
+                   WHERE p.id = ?""", (payment_id,)
+            ).fetchone()
+            if payment_row is None:
+                raise LookupError(f"payment #{payment_id} not found")
+            payment = dict(payment_row)
+            if amount <= 0:
+                raise ValueError("refund amount must be greater than zero")
+            refunded = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS total FROM refunds WHERE payment_id = ?",
+                (payment_id,),
+            ).fetchone()["total"]
+            remaining_refundable = round(float(payment["amount"]) - float(refunded), 2)
+            if amount > remaining_refundable + 0.000001:
+                raise ValueError(
+                    f"refund exceeds refundable payment balance ({remaining_refundable:.2f})"
+                )
+            if reference and conn.execute(
+                "SELECT 1 FROM refunds WHERE reference = ?", (reference,)
+            ).fetchone():
+                raise ValueError(f"refund reference already exists: {reference}")
+            now = _now()
+            ledger_cur = conn.execute(
+                """INSERT INTO ledger (task_id, kind, amount, currency, note, created_at)
+                   VALUES (?, 'expense', ?, ?, ?, ?)""",
+                (payment["task_id"], amount, payment["currency"],
+                 f"Refund for {payment['invoice_number']}" + (f" — {note}" if note else ""), now),
+            )
+            refund_cur = conn.execute(
+                """INSERT INTO refunds
+                   (payment_id, amount, refund_date, reference, note, ledger_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (payment_id, amount, refund_date, reference or None, note,
+                 ledger_cur.lastrowid, now),
+            )
+            refund = dict(conn.execute(
+                "SELECT * FROM refunds WHERE id = ?", (refund_cur.lastrowid,)
+            ).fetchone())
+            invoice_id = payment["invoice_id"]
+            old_invoice = dict(conn.execute(
+                "SELECT * FROM invoices WHERE id = ?", (invoice_id,)
+            ).fetchone())
+            total_paid = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?",
+                (invoice_id,),
+            ).fetchone()[0]
+            total_refunded = conn.execute(
+                """SELECT COALESCE(SUM(r.amount), 0)
+                   FROM refunds r JOIN payments p ON p.id = r.payment_id
+                   WHERE p.invoice_id = ?""", (invoice_id,)
+            ).fetchone()[0]
+            net_paid = round(float(total_paid) - float(total_refunded), 2)
+            if net_paid <= 0:
+                new_status = "issued"
+            elif net_paid + 0.000001 >= float(old_invoice["amount"]):
+                new_status = "paid"
+            else:
+                new_status = "partially_paid"
+            conn.execute(
+                "UPDATE invoices SET status = ?, updated_at = ? WHERE id = ?",
+                (new_status, now, invoice_id),
+            )
+            new_invoice = dict(conn.execute(
+                "SELECT * FROM invoices WHERE id = ?", (invoice_id,)
+            ).fetchone())
+            _audit(conn, "CREATE", "REFUND", refund["id"], user_name,
+                   f"Refund {amount:g} {payment['currency']} for {payment['invoice_number']}",
+                   new=refund)
+            _audit(conn, "REFUND_STATUS", "INVOICE", invoice_id, user_name,
+                   f"{old_invoice['status']} -> {new_status}", old=old_invoice, new=new_invoice)
+        return refund
+
+    def list_refunds(self, payment_id: int | None = None) -> list[dict]:
+        query = """SELECT r.*, p.invoice_id, i.invoice_number
+                   FROM refunds r JOIN payments p ON p.id = r.payment_id
+                   JOIN invoices i ON i.id = p.invoice_id"""
+        params = ()
+        if payment_id is not None:
+            query += " WHERE r.payment_id = ?"
+            params = (payment_id,)
+        query += " ORDER BY r.id DESC"
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute(query, params)]
+
     def list_invoices(self) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute(
                 """SELECT i.*,
-                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_amount
+                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_amount,
+                          COALESCE((SELECT SUM(r.amount) FROM refunds r
+                                    JOIN payments p ON p.id = r.payment_id
+                                    WHERE p.invoice_id = i.id), 0) AS refunded_amount,
+                          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
+                          - COALESCE((SELECT SUM(r.amount) FROM refunds r
+                                      JOIN payments p ON p.id = r.payment_id
+                                      WHERE p.invoice_id = i.id), 0) AS net_paid_amount
                    FROM invoices i ORDER BY i.id DESC"""
             ).fetchall()
         return [dict(row) for row in rows]
@@ -925,6 +1061,13 @@ class Database:
             old_row = conn.execute("SELECT * FROM ledger WHERE id = ?", (entry_id,)).fetchone()
             if old_row is None:
                 raise LookupError(f"ledger entry #{entry_id} not found")
+            linked = conn.execute(
+                "SELECT 1 FROM payments WHERE ledger_id = ? UNION ALL "
+                "SELECT 1 FROM refunds WHERE ledger_id = ? LIMIT 1",
+                (entry_id, entry_id),
+            ).fetchone()
+            if linked:
+                raise ValueError("ledger entries generated by payments or refunds cannot be edited")
             if entry.get("task_id") is not None and conn.execute(
                 "SELECT 1 FROM tasks WHERE id = ?", (entry["task_id"],)
             ).fetchone() is None:
@@ -948,6 +1091,13 @@ class Database:
             old_row = conn.execute("SELECT * FROM ledger WHERE id = ?", (entry_id,)).fetchone()
             if old_row is None:
                 raise LookupError(f"ledger entry #{entry_id} not found")
+            linked = conn.execute(
+                "SELECT 1 FROM payments WHERE ledger_id = ? UNION ALL "
+                "SELECT 1 FROM refunds WHERE ledger_id = ? LIMIT 1",
+                (entry_id, entry_id),
+            ).fetchone()
+            if linked:
+                raise ValueError("ledger entries generated by payments or refunds cannot be deleted")
             old = dict(old_row)
             _audit(conn, "DELETE", "LEDGER", entry_id, user_name,
                    f"{old['kind']} {old['amount']:g} {old['currency']}", old=old)
