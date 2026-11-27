@@ -11,6 +11,7 @@ import streamlit as st
 
 from core import agents as agents_mod
 from core.auth_context import CurrentUser
+from core.auth import show_login, logout
 from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
@@ -405,7 +406,8 @@ def page_tasks(company: Company) -> None:
         value=CurrentUser.get_username(),
         max_chars=100,
         key="audit_user_input",
-        help="اسم المشغّل الحالي الذي سيظهر في سجل التدقيق؛ هذا ليس نظام مصادقة.",
+        disabled=True,
+        help="هوية المستخدم الذي سجل الدخول، وتُستخدم في سجل التدقيق.",
     ).strip() or "system"
     CurrentUser.set_username(user_name)
     user_name = CurrentUser.get_username()
@@ -613,10 +615,17 @@ PAGES = {
 
 
 def main() -> None:
+    apply_custom_theme()
+    if not show_login():
+        return
+
+    authenticated_username = st.session_state.get("username", "")
+    if authenticated_username:
+        CurrentUser.set_username(authenticated_username)
+
     company = get_company()
     preferences = load_ui_settings(company.settings.db_path)
     st.markdown(RTL_CSS, unsafe_allow_html=True)
-    apply_custom_theme()
     if not preferences["dark_mode"]:
         st.markdown("""
         <style>
@@ -648,6 +657,10 @@ def main() -> None:
     </div>
     """, unsafe_allow_html=True)
     page = st.sidebar.radio("مساحة العمل", list(PAGES), label_visibility="collapsed")
+    st.sidebar.caption(f"مسجل الدخول: {CurrentUser.get_username()}")
+    if st.sidebar.button("تسجيل الخروج", use_container_width=True):
+        logout()
+        st.rerun()
     st.sidebar.markdown(
         f'<div style="margin-top:24px;padding:12px;border:1px solid #293960;border-radius:12px;'
         f'background:#172342;color:#b9c8ee;font-size:.8rem;text-align:center">AICompanyOS · v{APP_VERSION}</div>',
