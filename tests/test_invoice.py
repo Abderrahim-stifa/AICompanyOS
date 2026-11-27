@@ -13,6 +13,7 @@ class InvoiceHtmlTests(unittest.TestCase):
                 "description": "تصميم وتطوير صفحة رئيسية",
                 "price": 1250.5,
                 "client_name": "شركة الاختبار",
+                "project_name": "مشروع الاختبار",
                 "status": "done",
                 "agent": "engineer",
             },
@@ -21,6 +22,7 @@ class InvoiceHtmlTests(unittest.TestCase):
         )
         self.assertIn('<html dir="rtl" lang="ar">', html)
         self.assertIn("شركة الاختبار", html)
+        self.assertIn("مشروع الاختبار", html)
         self.assertIn("1,250.50 MAD", html)
         self.assertIn("مكتملة", html)
         self.assertIn("window.print()", html)

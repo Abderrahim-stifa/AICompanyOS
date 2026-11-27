@@ -6,8 +6,9 @@ def search_tasks(
     tasks: list[dict],
     query: str,
     clients: list[dict] | None = None,
+    projects: list[dict] | None = None,
 ) -> list[dict]:
-    """Filter tasks by title, description, or linked client name."""
+    """Filter tasks by title, description, or linked client/project name."""
     normalized_query = (query or "").strip().casefold()
     if not normalized_query:
         return list(tasks)
@@ -15,6 +16,10 @@ def search_tasks(
     client_names = {
         client.get("id"): str(client.get("name", ""))
         for client in (clients or [])
+    }
+    project_names = {
+        project.get("id"): str(project.get("name", ""))
+        for project in (projects or [])
     }
     matches = []
     for task in tasks:
@@ -24,6 +29,7 @@ def search_tasks(
                 task.get("title", ""),
                 task.get("description", ""),
                 client_names.get(task.get("client_id"), ""),
+                project_names.get(task.get("project_id"), ""),
             )
         ).casefold()
         if normalized_query in searchable:

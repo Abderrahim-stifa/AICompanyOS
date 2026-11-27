@@ -533,6 +533,14 @@ def page_tasks(company: Company) -> None:
     user_name = CurrentUser.get_username()
 
     tasks = get_tasks(company.settings.db_path)
+    clients = company.db.list_clients()
+    projects = company.db.list_projects()
+    client_options = {"— بدون عميل —": None, **{
+        f"#{item['id']} — {item['name']}": item["id"] for item in clients
+    }}
+    project_options = {"— بدون مشروع —": None, **{
+        f"#{item['id']} — {item['name']}": item["id"] for item in projects
+    }}
     agents = company.db.list_agents()
     role_agents = company.db.list_role_agents()
     pipeline_names = [item["name"] for item in agents]
@@ -550,13 +558,16 @@ def page_tasks(company: Company) -> None:
         format_func=lambda value: value if value == "الكل" else ar(TASK_AR, value),
         key="tasks_status_filter",
     )
-    clients_for_search = company.db.list_clients() if search_query.strip() else []
-    searched_tasks = search_tasks(tasks, search_query, clients_for_search)
+    clients_for_search = clients if search_query.strip() else []
+    projects_for_search = projects if search_query.strip() else []
+    searched_tasks = search_tasks(tasks, search_query, clients_for_search, projects_for_search)
     visible_tasks = [
         item for item in searched_tasks
         if status_filter == "الكل" or item["status"] == status_filter
     ]
     role_agent_names = {item["agent_key"]: item["role"] for item in role_agents}
+    client_names = {item["id"]: item["name"] for item in clients}
+    project_names = {item["id"]: item["name"] for item in projects}
     task_rows = []
     for item in visible_tasks:
         row = dict(item)
@@ -569,13 +580,17 @@ def page_tasks(company: Company) -> None:
         row["role_agent_key"] = role_agent_names.get(
             item.get("role_agent_key"), item.get("role_agent_key") or "—"
         )
+        row["client_name"] = client_names.get(item.get("client_id"), "—")
+        row["project_name"] = project_names.get(item.get("project_id"), "—")
         task_rows.append(row)
     st.caption("اقتراح الوكيل المتخصص ناتج عن تحليل محلي للكلمات المفتاحية؛ لا يتم الإسناد تلقائياً. أكد الإسناد من تبويب تعديل / إسناد.")
     table(task_rows, {
         "id": "الرقم", "title": "المهمة", "description": "الوصف",
         "priority": "الأولوية", "status": "الحالة", "agent": "وكيل Pipeline",
         "suggested_role_agent": "اقتراح الوكيل المتخصص",
-        "role_agent_key": "الوكيل المتخصص المعيّن", "created_at": "تاريخ الإنشاء",
+        "role_agent_key": "الوكيل المتخصص المعيّن",
+        "client_name": "العميل", "project_name": "المشروع",
+        "created_at": "تاريخ الإنشاء",
     }, {"status": TASK_AR, "agent": AGENT_AR})
 
     tab_create, tab_update, tab_delete = st.tabs(["إضافة مهمة", "تعديل / إسناد", "حذف مهمة"])
@@ -635,6 +650,12 @@ def page_tasks(company: Company) -> None:
             role_agent = st.selectbox(
                 "الوكيل المتخصص (اختياري — يتطلب تأكيدك)", role_options
             )
+            selected_client = st.selectbox(
+                "العميل المرتبط (اختياري)", list(client_options), key="task_create_client"
+            )
+            selected_project = st.selectbox(
+                "المشروع المرتبط (اختياري)", list(project_options), key="task_create_project"
+            )
             if st.form_submit_button("💾 إنشاء المهمة"):
                 try:
                     created = company.add_task({
@@ -642,6 +663,8 @@ def page_tasks(company: Company) -> None:
                         "category": category, "price": price,
                         "currency": company.settings.default_currency,
                         "priority": priority,
+                        "client_id": client_options[selected_client],
+                        "project_id": project_options[selected_project],
                     }, user_name=user_name)
                     if pipeline_agent != "— بدون إسناد —":
                         company.update_task(created["id"], {
@@ -688,6 +711,26 @@ def page_tasks(company: Company) -> None:
                                      if key == selected.get("role_agent_key")), "— بدون إسناد —")
                 edit_role = st.selectbox("وكيل الدور", list(role_labels),
                                          index=list(role_labels).index(current_role))
+                current_client = next(
+                    (label for label, value in client_options.items()
+                     if value == selected.get("client_id")),
+                    "— بدون عميل —",
+                )
+                current_project = next(
+                    (label for label, value in project_options.items()
+                     if value == selected.get("project_id")),
+                    "— بدون مشروع —",
+                )
+                edit_client = st.selectbox(
+                    "العميل المرتبط", list(client_options),
+                    index=list(client_options).index(current_client),
+                    key="task_edit_client",
+                )
+                edit_project = st.selectbox(
+                    "المشروع المرتبط", list(project_options),
+                    index=list(project_options).index(current_project),
+                    key="task_edit_project",
+                )
                 if st.form_submit_button("حفظ التعديلات"):
                     try:
                         company.update_task(selected["id"], {
@@ -696,6 +739,8 @@ def page_tasks(company: Company) -> None:
                             "price": edit_price, "currency": company.settings.default_currency,
                             "priority": edit_priority, "status": edit_status,
                             "agent": "" if edit_pipeline == "— بدون إسناد —" else edit_pipeline,
+                            "client_id": client_options[edit_client],
+                            "project_id": project_options[edit_project],
                             "user_name": user_name,
                         })
                         role_key = role_labels[edit_role]
@@ -728,7 +773,14 @@ def page_tasks(company: Company) -> None:
                     if client_match:
                         client_name = client_match["name"]
 
-                display_task = {**selected, "client_name": client_name}
+                project_name = next(
+                    (project["name"] for project in projects
+                     if project["id"] == selected.get("project_id")),
+                    "",
+                )
+                display_task = {
+                    **selected, "client_name": client_name, "project_name": project_name
+                }
                 invoice_html = generate_invoice_html(
                     task=display_task,
                     company_name=(

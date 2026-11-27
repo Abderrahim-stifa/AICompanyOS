@@ -11,6 +11,7 @@ from .logs import get_logger
 from .validator import TASK_STATUSES, ValidationError
 
 log = get_logger("database")
+_UNSET = object()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -29,7 +30,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority    TEXT NOT NULL DEFAULT 'normal',
     result      TEXT,
     assigned_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    client_id   INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -181,6 +184,8 @@ class Database:
                 ("result", "TEXT"),
                 ("assigned_at", "TEXT"),
                 ("completed_at", "TEXT"),
+                ("client_id", "INTEGER REFERENCES clients(id) ON DELETE SET NULL"),
+                ("project_id", "INTEGER REFERENCES projects(id) ON DELETE SET NULL"),
             ):
                 if column not in task_columns:
                     conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {declaration}")
@@ -196,6 +201,8 @@ class Database:
                 if column not in log_columns:
                     conn.execute(f"ALTER TABLE activity_logs ADD COLUMN {column} {declaration}")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)")
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
                 DEFAULT_AGENTS,
@@ -206,11 +213,22 @@ class Database:
     def add_task(self, task: dict, user_name: str = "system") -> dict:
         now = _now()
         with self.connect() as conn:
+            if task.get("client_id") is not None and conn.execute(
+                "SELECT 1 FROM clients WHERE id = ?", (task["client_id"],)
+            ).fetchone() is None:
+                raise LookupError(f"client #{task['client_id']} not found")
+            if task.get("project_id") is not None and conn.execute(
+                "SELECT 1 FROM projects WHERE id = ?", (task["project_id"],)
+            ).fetchone() is None:
+                raise LookupError(f"project #{task['project_id']} not found")
             cur = conn.execute(
                 """INSERT INTO tasks
-                   (title, description, source, category, price, currency, status, priority, created_at, updated_at)
-                   VALUES (:title, :description, :source, :category, :price, :currency, 'found', :priority, :now, :now)""",
-                {**task, "now": now, "priority": task.get("priority", "normal")},
+                   (title, description, source, category, price, currency, status, priority,
+                    client_id, project_id, created_at, updated_at)
+                   VALUES (:title, :description, :source, :category, :price, :currency,
+                           'found', :priority, :client_id, :project_id, :now, :now)""",
+                {**task, "now": now, "priority": task.get("priority", "normal"),
+                 "client_id": task.get("client_id"), "project_id": task.get("project_id")},
             )
             task_id = cur.lastrowid
             created_values = dict(conn.execute(
@@ -467,13 +485,15 @@ class Database:
                     status: str | None = None, category: str | None = None,
                     agent: str | None = None, priority: str | None = None,
                     source: str | None = None, price: float | None = None,
-                    currency: str | None = None, user_name: str = "system") -> dict:
+                    currency: str | None = None, client_id=_UNSET,
+                    project_id=_UNSET, user_name: str = "system") -> dict:
         values = {"title": title, "description": description, "priority": priority,
                   "source": source, "price": price, "currency": currency,
-                  "status": status, "category": category, "agent": agent}
+                  "status": status, "category": category, "agent": agent,
+                  "client_id": client_id, "project_id": project_id}
         sets, params = ["updated_at = ?"], [_now()]
         for field, value in values.items():
-            if value is None:
+            if value is _UNSET or (value is None and field not in {"client_id", "project_id"}):
                 continue
             if field == "priority" and value not in {"low", "normal", "high", "urgent"}:
                 raise ValidationError("priority must be low, normal, high or urgent")
@@ -491,6 +511,14 @@ class Database:
             if old_row is None:
                 raise LookupError("task #{} not found".format(task_id))
             old_values = dict(old_row)
+            if client_id is not _UNSET and client_id is not None and conn.execute(
+                "SELECT 1 FROM clients WHERE id = ?", (client_id,)
+            ).fetchone() is None:
+                raise LookupError(f"client #{client_id} not found")
+            if project_id is not _UNSET and project_id is not None and conn.execute(
+                "SELECT 1 FROM projects WHERE id = ?", (project_id,)
+            ).fetchone() is None:
+                raise LookupError(f"project #{project_id} not found")
             conn.execute("UPDATE tasks SET " + ", ".join(sets) + " WHERE id = ?", params)
             new_values = dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())
             conn.execute(

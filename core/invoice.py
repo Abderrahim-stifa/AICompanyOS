@@ -54,6 +54,7 @@ def generate_invoice_html(
     description = _safe_text(task.get("description", "لا يوجد وصف إضافي"))
     price = _format_price(task.get("price", 0.0))
     client_name = _safe_text(task.get("client_name", "عميل نقدي"))
+    project_name = _safe_text(task.get("project_name", ""))
     agent = _safe_text(task.get("agent", "غير محدد"))
     company = _safe_text(company_name, "AICompanyOS")
     currency_text = _safe_text(currency)
@@ -107,7 +108,8 @@ def generate_invoice_html(
         <section class="details">
             <div>
                 <strong>العميل:</strong> {client_name}<br>
-                <strong>التاريخ:</strong> {date_str}
+                <strong>التاريخ:</strong> {date_str}<br>
+                {f"<strong>المشروع:</strong> {project_name}" if project_name else ""}
             </div>
             <div class="status" style="text-align: left;">
                 <strong>الحالة:</strong> {status}<br>
