@@ -275,6 +275,91 @@ def page_role_agents(company: Company) -> None:
         st.warning(result["notice"])
 
 
+
+def page_agent_runs(company: Company) -> None:
+    st.header("موافقات تشغيل الوكلاء")
+    st.caption("يُنشئ الوكيل خطة محلية أولية مرتبطة بمهمة مسندة إليه. لا يحدث أي تنفيذ خارجي تلقائي؛ الاعتماد بشري، وتسجيل النتيجة يتم يدوياً.")
+    tasks = [task for task in company.db.list_tasks() if task.get("role_agent_key")]
+    if not tasks:
+        st.info("لا توجد مهام مسندة إلى وكلاء متخصصين. أسند مهمة من صفحة المهام أولاً.")
+    else:
+        task_options = {
+            f"#{task['id']} — {task['title']} ({task['role_agent_key']})": task
+            for task in tasks
+        }
+        selected_label = st.selectbox("المهمة المسندة", list(task_options), key="agent_run_task")
+        selected_task = task_options[selected_label]
+        if st.button("إنشاء خطة الوكيل للمهمة", type="primary"):
+            try:
+                brief = (selected_task.get("title", "") + "\\n" +
+                         selected_task.get("description", "")).strip()
+                plan = role_agents.run_agent(selected_task["role_agent_key"], brief)
+                run = company.db.create_role_agent_run(
+                    selected_task["id"], selected_task["role_agent_key"], plan,
+                    requested_by=CurrentUser.get_username(),
+                )
+                st.session_state["selected_role_agent_run_id"] = run["id"]
+                st.success(f"تم حفظ الخطة في سجل التشغيل #{run['id']} وهي تنتظر الموافقة.")
+            except (ValueError, LookupError, ValidationError) as exc:
+                st.warning(str(exc))
+
+    runs = company.db.list_role_agent_runs(limit=100)
+    st.subheader("سجل التشغيل والمراجعة")
+    if not runs:
+        st.info("لم يتم إنشاء خطط تشغيل بعد.")
+        return
+    status_ar = {
+        "awaiting_approval": "بانتظار الموافقة",
+        "approved": "معتمدة — بانتظار تسجيل النتيجة",
+        "completed": "مكتملة",
+        "rejected": "مرفوضة",
+    }
+    for run in runs:
+        with st.expander(
+            f"#{run['id']} · المهمة #{run['task_id']} · {run['role_agent_key']} · {status_ar[run['status']]}",
+            expanded=(run["id"] == st.session_state.get("selected_role_agent_run_id")),
+        ):
+            plan = run["plan"]
+            st.markdown(f"**{plan.get('title', 'خطة الوكيل')}**")
+            st.write(plan.get("brief", ""))
+            for step in plan.get("steps", []):
+                st.markdown(f"- {step}")
+            st.caption(f"أنشأها: {run['requested_by']} · {run['created_at']} · {plan.get('mode', '')}")
+            if run["status"] == "awaiting_approval":
+                st.warning("راجع الخطة قبل اعتمادها. الاعتماد لا يشغّل إجراءات خارجية.")
+                c1, c2 = st.columns(2)
+                if c1.button("اعتماد الخطة", key=f"approve_run_{run['id']}"):
+                    try:
+                        company.db.review_role_agent_run(
+                            run["id"], "approved", CurrentUser.get_username()
+                        )
+                        st.rerun()
+                    except (ValueError, LookupError, ValidationError) as exc:
+                        fail(exc)
+                if c2.button("رفض الخطة", key=f"reject_run_{run['id']}"):
+                    try:
+                        company.db.review_role_agent_run(
+                            run["id"], "rejected", CurrentUser.get_username()
+                        )
+                        st.rerun()
+                    except (ValueError, LookupError, ValidationError) as exc:
+                        fail(exc)
+            elif run["status"] == "approved":
+                outcome = st.text_area("النتيجة الفعلية بعد مراجعة العمل", key=f"run_result_{run['id']}")
+                if st.button("حفظ النتيجة", key=f"complete_run_{run['id']}"):
+                    try:
+                        company.db.complete_role_agent_run(
+                            run["id"], outcome, CurrentUser.get_username()
+                        )
+                        st.rerun()
+                    except (ValueError, LookupError, ValidationError) as exc:
+                        fail(exc)
+            elif run["status"] == "completed":
+                st.markdown("**النتيجة المسجلة:**")
+                st.write(run.get("result", ""))
+
+
+
 def page_clients(company: Company) -> None:
     st.header("👥 العملاء")
     table(company.db.list_clients(),
@@ -681,6 +766,7 @@ PAGES = {
     "لوحة التحكم": page_dashboard,
     "الوكلاء": page_agents,
     "الوكلاء السبعة": page_role_agents,
+    "موافقات تشغيل الوكلاء": page_agent_runs,
     "العملاء": page_clients,
     "المشاريع": page_projects,
     "المهام": page_tasks,
