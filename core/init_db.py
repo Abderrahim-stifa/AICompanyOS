@@ -52,6 +52,29 @@ def _ensure_settings_file() -> dict:
     return merged
 
 
+
+def optimize_database(db_path: str) -> None:
+    """Create idempotent indexes for common task, activity-log, and ledger queries."""
+    if not isinstance(db_path, str) or not db_path.strip():
+        raise ValueError("db_path must be a non-empty string")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(agent)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_logs_created "
+            "ON activity_logs(created_at DESC)"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_kind ON ledger(kind)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
     """Initialize the existing application schema and additive v0.1 tables."""
     settings = load_settings()
@@ -112,6 +135,9 @@ def initialize_database(db_path: str | None = None, seed: bool = True) -> str:
         raise
     finally:
         conn.close()
+
+    # Apply query indexes only after all indexed tables have been initialized.
+    optimize_database(target)
     return target
 
 

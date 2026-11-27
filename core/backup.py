@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .logs import get_logger
@@ -46,6 +46,34 @@ def _prune(backup_dir: Path, keep: int) -> None:
     for old in backups[: max(0, len(backups) - max(1, keep))]:
         old.unlink()
         log.info("old backup removed: %s", old.name)
+
+
+
+def auto_backup_if_needed(
+    db_path: str,
+    backup_dir: str,
+    interval_hours: int = 24,
+    *,
+    now: datetime | None = None,
+) -> Path | None:
+    """Create a backup when none exists or the newest backup is at least N hours old.
+
+    Returns the new backup path, or None when the existing backup is still fresh.
+    The optional clock value makes scheduling deterministic in tests.
+    """
+    if not isinstance(interval_hours, int) or interval_hours <= 0:
+        raise ValueError("interval_hours must be a positive integer")
+
+    current_time = now or datetime.now()
+    existing = list_backups(backup_dir)
+    if existing:
+        newest = max(existing, key=lambda path: path.stat().st_mtime)
+        last_backup = datetime.fromtimestamp(newest.stat().st_mtime)
+        if current_time - last_backup < timedelta(hours=interval_hours):
+            log.debug("automatic backup skipped; latest backup is still fresh")
+            return None
+
+    return create_backup(db_path, backup_dir)
 
 
 def restore_backup(backup_file: str, db_path: str) -> None:
