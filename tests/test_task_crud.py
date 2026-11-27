@@ -93,3 +93,37 @@ class TaskCrudTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_delete_task_audits_unlinking_of_invoice_and_payment_ledger(self):
+        import json
+
+        task = self.db.add_task({
+            "title": "Financially linked task", "description": "", "source": "test",
+            "category": "consulting", "price": 500, "currency": "MAD",
+        }, user_name="Finance")
+        invoice = self.db.create_invoice(task["id"], user_name="Finance")
+        self.db.issue_invoice(invoice["id"], user_name="Finance")
+        payment = self.db.record_payment(
+            invoice["id"], 100, "MAD", "2026-11-27", user_name="Finance"
+        )
+
+        self.db.delete_task(task["id"], user_name="Owner")
+
+        invoices = self.db.list_invoices()
+        self.assertEqual(invoices[0]["id"], invoice["id"])
+        self.assertIsNone(invoices[0]["task_id"])
+        ledger = self.db.list_ledger()
+        payment_ledger = next(row for row in ledger if row["id"] == payment["ledger_id"])
+        self.assertIsNone(payment_ledger["task_id"])
+
+        logs = self.db.list_system_logs()
+        unlink_events = [row for row in logs if row["action"] == "UNLINK_TASK"]
+        self.assertEqual(
+            {(row["entity_type"], row["entity_id"]) for row in unlink_events},
+            {("INVOICE", invoice["id"]), ("LEDGER", payment["ledger_id"])},
+        )
+        for event in unlink_events:
+            self.assertEqual(event["user_name"], "Owner")
+            self.assertEqual(json.loads(event["old_values"])["task_id"], task["id"])
+            self.assertIsNone(json.loads(event["new_values"])["task_id"])
