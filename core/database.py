@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority    TEXT NOT NULL DEFAULT 'normal',
     result      TEXT,
     assigned_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    client_id   INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -88,6 +90,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id);
 
 CREATE TABLE IF NOT EXISTS role_agent_runs (
@@ -167,6 +171,8 @@ class Database:
                 ("result", "TEXT"),
                 ("assigned_at", "TEXT"),
                 ("completed_at", "TEXT"),
+                ("client_id", "INTEGER REFERENCES clients(id) ON DELETE SET NULL"),
+                ("project_id", "INTEGER REFERENCES projects(id) ON DELETE SET NULL"),
             ):
                 if column not in task_columns:
                     conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {declaration}")
@@ -182,6 +188,8 @@ class Database:
                 if column not in log_columns:
                     conn.execute(f"ALTER TABLE activity_logs ADD COLUMN {column} {declaration}")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_role_agent ON tasks(role_agent_key)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)")
             conn.executemany(
                 "INSERT OR IGNORE INTO agents (name, role, specialty) VALUES (?, ?, ?)",
                 DEFAULT_AGENTS,
@@ -194,9 +202,12 @@ class Database:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO tasks
-                   (title, description, source, category, price, currency, status, priority, created_at, updated_at)
-                   VALUES (:title, :description, :source, :category, :price, :currency, 'found', :priority, :now, :now)""",
-                {**task, "now": now, "priority": task.get("priority", "normal")},
+                   (title, description, source, category, price, currency, status, priority,
+                    client_id, project_id, created_at, updated_at)
+                   VALUES (:title, :description, :source, :category, :price, :currency,
+                           'found', :priority, :client_id, :project_id, :now, :now)""",
+                {**task, "now": now, "priority": task.get("priority", "normal"),
+                 "client_id": task.get("client_id"), "project_id": task.get("project_id")},
             )
             task_id = cur.lastrowid
             created_values = dict(conn.execute(
@@ -477,6 +488,14 @@ class Database:
             if old_row is None:
                 raise LookupError("task #{} not found".format(task_id))
             old_values = dict(old_row)
+            if client_id is not None and conn.execute(
+                "SELECT 1 FROM clients WHERE id = ?", (client_id,)
+            ).fetchone() is None:
+                raise LookupError(f"client #{client_id} not found")
+            if project_id is not None and conn.execute(
+                "SELECT 1 FROM projects WHERE id = ?", (project_id,)
+            ).fetchone() is None:
+                raise LookupError(f"project #{project_id} not found")
             conn.execute("UPDATE tasks SET " + ", ".join(sets) + " WHERE id = ?", params)
             new_values = dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())
             conn.execute(
