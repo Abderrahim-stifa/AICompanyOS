@@ -15,6 +15,7 @@ from core.auth import check_password, logout
 from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
+from core.smart_agent import SmartTaskAnalyzer
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.ui_helpers import notify_and_refresh
@@ -427,10 +428,26 @@ def page_tasks(company: Company) -> None:
         key="tasks_status_filter",
     )
     visible_tasks = [item for item in tasks if status_filter == "الكل" or item["status"] == status_filter]
-    table(visible_tasks, {
+    role_agent_names = {item["agent_key"]: item["role"] for item in role_agents}
+    task_rows = []
+    for item in visible_tasks:
+        row = dict(item)
+        analysis = SmartTaskAnalyzer.analyze_and_classify(
+            f"{item['title']} {item.get('description', '')}"
+        )
+        row["suggested_role_agent"] = role_agent_names.get(
+            analysis["suggested_role_agent"], analysis["suggested_role_agent"]
+        )
+        row["role_agent_key"] = role_agent_names.get(
+            item.get("role_agent_key"), item.get("role_agent_key") or "—"
+        )
+        task_rows.append(row)
+    st.caption("اقتراح الوكيل المتخصص ناتج عن تحليل محلي للكلمات المفتاحية؛ لا يتم الإسناد تلقائياً. أكد الإسناد من تبويب تعديل / إسناد.")
+    table(task_rows, {
         "id": "الرقم", "title": "المهمة", "description": "الوصف",
         "priority": "الأولوية", "status": "الحالة", "agent": "وكيل Pipeline",
-        "role_agent_key": "وكيل الدور", "created_at": "تاريخ الإنشاء",
+        "suggested_role_agent": "اقتراح الوكيل المتخصص",
+        "role_agent_key": "الوكيل المتخصص المعيّن", "created_at": "تاريخ الإنشاء",
     }, {"status": TASK_AR, "agent": AGENT_AR})
 
     tab_create, tab_update, tab_delete = st.tabs(["إضافة مهمة", "تعديل / إسناد", "حذف مهمة"])
