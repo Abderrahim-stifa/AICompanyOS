@@ -586,6 +586,25 @@ class Database:
             if row is None:
                 raise LookupError("task #{} not found".format(task_id))
             task = dict(row)
+            # Detach linked financial records explicitly so every relationship change
+            # is audited in the same transaction as task deletion.
+            for table, entity_type in (("ledger", "LEDGER"), ("invoices", "INVOICE")):
+                linked_rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE task_id = ? ORDER BY id", (task_id,)
+                ).fetchall()
+                for linked_row in linked_rows:
+                    before = dict(linked_row)
+                    conn.execute(
+                        f"UPDATE {table} SET task_id = NULL WHERE id = ?",
+                        (before["id"],),
+                    )
+                    after = dict(conn.execute(
+                        f"SELECT * FROM {table} WHERE id = ?", (before["id"],)
+                    ).fetchone())
+                    _audit(
+                        conn, "UNLINK_TASK", entity_type, before["id"], user_name,
+                        f"Detached from deleted task #{task_id}", old=before, new=after,
+                    )
             conn.execute(
                 """INSERT INTO activity_logs
                    (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
