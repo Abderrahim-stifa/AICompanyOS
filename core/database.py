@@ -89,6 +89,24 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id);
+
+CREATE TABLE IF NOT EXISTS role_agent_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    role_agent_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'awaiting_approval'
+        CHECK (status IN ('awaiting_approval', 'approved', 'completed', 'rejected')),
+    plan_json TEXT NOT NULL,
+    result TEXT,
+    requested_by TEXT NOT NULL DEFAULT 'system',
+    reviewed_by TEXT,
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_agent_runs_task ON role_agent_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_role_agent_runs_status ON role_agent_runs(status);
 """
 
 DEFAULT_AGENTS = (
@@ -288,6 +306,132 @@ class Database:
                  "تم حفظ نتيجة تنفيذ المهمة", task_id, now),
             )
         return self.get_task(task_id)
+
+    # ---- role-agent run approvals ----
+    def create_role_agent_run(self, task_id: int, agent_key: str, plan: dict,
+                              requested_by: str = "system") -> dict:
+        """Persist a role-agent plan; it cannot be treated as approved execution."""
+        if not isinstance(plan, dict):
+            raise ValidationError("خطة الوكيل غير صالحة.")
+        task = self.get_task(task_id)
+        if task.get("role_agent_key") != agent_key:
+            raise ValidationError("المهمة يجب أن تكون مسندة إلى الوكيل المختار أولاً.")
+        with self.connect() as conn:
+            if conn.execute(
+                "SELECT 1 FROM role_agents WHERE agent_key = ?", (agent_key,)
+            ).fetchone() is None:
+                raise LookupError(f"role agent {agent_key!r} not found")
+            now = _now()
+            cur = conn.execute(
+                """INSERT INTO role_agent_runs
+                   (task_id, role_agent_key, status, plan_json, requested_by, created_at)
+                   VALUES (?, ?, 'awaiting_approval', ?, ?, ?)""",
+                (task_id, agent_key, json.dumps(plan, ensure_ascii=False), requested_by, now),
+            )
+            run_id = cur.lastrowid
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, new_values, created_at)
+                   VALUES ('AGENT_PLAN_CREATED', 'ROLE_AGENT_RUN', ?, ?, ?, ?, ?)""",
+                (run_id, requested_by, f"خطة أولية للمهمة #{task_id} بواسطة {agent_key}",
+                 json.dumps({"task_id": task_id, "role_agent_key": agent_key,
+                             "status": "awaiting_approval"}, ensure_ascii=False), now),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (agent_key, f"تم إنشاء خطة تنتظر الموافقة (تشغيل #{run_id})", task_id, now),
+            )
+        return self.get_role_agent_run(run_id)
+
+    def get_role_agent_run(self, run_id: int) -> dict:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM role_agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"role-agent run #{run_id} not found")
+        item = dict(row)
+        item["plan"] = json.loads(item.pop("plan_json"))
+        return item
+
+    def list_role_agent_runs(self, task_id: int | None = None, limit: int = 100) -> list[dict]:
+        query = "SELECT id FROM role_agent_runs"
+        params = ()
+        if task_id is not None:
+            query += " WHERE task_id = ?"
+            params = (task_id,)
+        query += " ORDER BY id DESC LIMIT ?"
+        params += (max(1, min(int(limit), 500)),)
+        with self.connect() as conn:
+            ids = [row["id"] for row in conn.execute(query, params)]
+        return [self.get_role_agent_run(run_id) for run_id in ids]
+
+    def review_role_agent_run(self, run_id: int, decision: str, reviewer: str) -> dict:
+        if decision not in {"approved", "rejected"}:
+            raise ValidationError("قرار المراجعة غير صالح.")
+        now = _now()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM role_agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"role-agent run #{run_id} not found")
+            if row["status"] != "awaiting_approval":
+                raise ValidationError("لا يمكن مراجعة هذا التشغيل مرة أخرى.")
+            conn.execute(
+                """UPDATE role_agent_runs SET status = ?, reviewed_by = ?, reviewed_at = ?
+                   WHERE id = ?""",
+                (decision, reviewer, now, run_id),
+            )
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+                   VALUES ('AGENT_PLAN_REVIEWED', 'ROLE_AGENT_RUN', ?, ?, ?, ?, ?, ?)""",
+                (run_id, reviewer, f"قرار مراجعة خطة المهمة #{row['task_id']}: {decision}",
+                 json.dumps({"status": "awaiting_approval"}),
+                 json.dumps({"status": decision}), now),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (row["role_agent_key"], f"مراجعة الخطة: {decision} (تشغيل #{run_id})",
+                 row["task_id"], now),
+            )
+        return self.get_role_agent_run(run_id)
+
+    def complete_role_agent_run(self, run_id: int, result: str, actor: str) -> dict:
+        """Record a human-entered outcome after approval; performs no external action."""
+        if not isinstance(result, str) or not result.strip():
+            raise ValidationError("نتيجة العمل مطلوبة.")
+        if len(result.strip()) > 20000:
+            raise ValidationError("النتيجة طويلة جداً (الحد 20000 حرف).")
+        now = _now()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM role_agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"role-agent run #{run_id} not found")
+            if row["status"] != "approved":
+                raise ValidationError("يجب اعتماد الخطة قبل تسجيل النتيجة.")
+            conn.execute(
+                """UPDATE role_agent_runs SET status = 'completed', result = ?, completed_at = ?
+                   WHERE id = ?""",
+                (result.strip(), now, run_id),
+            )
+            conn.execute(
+                """INSERT INTO activity_logs
+                   (action, entity_type, entity_id, user_name, details, old_values, new_values, created_at)
+                   VALUES ('AGENT_RUN_COMPLETED', 'ROLE_AGENT_RUN', ?, ?, ?, ?, ?, ?)""",
+                (run_id, actor, f"تسجيل نتيجة المهمة #{row['task_id']}",
+                 json.dumps({"status": "approved"}),
+                 json.dumps({"status": "completed", "result": result.strip()},
+                            ensure_ascii=False), now),
+            )
+            conn.execute(
+                "INSERT INTO activity (agent, action, task_id, created_at) VALUES (?, ?, ?, ?)",
+                (row["role_agent_key"], f"تم تسجيل نتيجة التشغيل #{run_id}", row["task_id"], now),
+            )
+        return self.get_role_agent_run(run_id)
 
     def get_task(self, task_id: int) -> dict:
         with self.connect() as conn:
