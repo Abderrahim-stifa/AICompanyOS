@@ -5,6 +5,7 @@ import pytest
 
 from core.database import Database
 from core.services.task_service import TaskService
+from core.task_search import search_tasks
 
 
 def _database(tmp_path):
@@ -133,3 +134,25 @@ def test_legacy_database_migration_preserves_existing_tasks(tmp_path):
     assert task["agent"] == "manager"
     assert task["client_id"] is None
     assert task["project_id"] is None
+
+
+
+def test_search_matches_linked_client_and_project_names():
+    tasks = [
+        {"id": 1, "title": "Build site", "description": "", "client_id": 10, "project_id": 20},
+        {"id": 2, "title": "Other task", "description": "", "client_id": None, "project_id": None},
+    ]
+    clients = [{"id": 10, "name": "Atlas Client"}]
+    projects = [{"id": 20, "name": "Mobile Platform"}]
+
+    assert [task["id"] for task in search_tasks(tasks, "Atlas", clients, projects)] == [1]
+    assert [task["id"] for task in search_tasks(tasks, "Mobile", clients, projects)] == [1]
+
+
+def test_invalid_relationship_update_is_rejected(tmp_path):
+    db = _database(tmp_path)
+    service = TaskService(db, default_currency="MAD")
+    task = service.create_task(_task_data())
+
+    with pytest.raises(LookupError, match="project"):
+        service.update_task(task["id"], {"project_id": 123456})
