@@ -178,8 +178,16 @@ def create_supervised_plan(brief: str, provider: Provider | None = None) -> dict
     if not 5 <= len(brief) <= MAX_BRIEF_LENGTH:
         raise ValueError("يجب أن يكون وصف الطلب بين 5 و4000 حرف.")
     selected = provider or get_provider()
-    output = validate_output(selected.generate(brief))
-    return {
+    fallback_reason = None
+    try:
+        output = validate_output(selected.generate(brief))
+    except ProviderError as exc:
+        if selected.name == "offline":
+            raise
+        fallback_reason = str(exc)
+        selected = OfflineProvider()
+        output = validate_output(selected.generate(brief))
+    result = {
         **output,
         "provider": selected.name,
         "model": selected.model,
@@ -192,3 +200,7 @@ def create_supervised_plan(brief: str, provider: Provider | None = None) -> dict
             "واعتمادها بشرياً. لا ينفذ هذا المسار أدوات أو تغييرات خارجية أو مالية."
         ),
     }
+    if fallback_reason:
+        result["fallback_reason"] = fallback_reason
+        result["requested_provider"] = "openai"
+    return result
