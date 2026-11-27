@@ -19,7 +19,15 @@ def build_agent_overview(tasks: list[dict], enabled: dict[str, bool] | None = No
     overview = []
     for key, definition in AGENTS.items():
         identifiers = {key, definition["name"], definition["name_ar"]}
-        assigned = [task for task in tasks if task.get("agent") in identifiers]
+        # role_agent_key is the canonical specialist assignment. The legacy
+        # agent fallback keeps historical rows and older callers readable,
+        # while pipeline-only values (manager/finder/classifier/executor) never
+        # count as assignments to one of the seven role agents.
+        assigned = [
+            task for task in tasks
+            if task.get("role_agent_key") == key
+            or (not task.get("role_agent_key") and task.get("agent") in identifiers)
+        ]
         active = sum(task.get("status") in ACTIVE_TASK_STATES for task in assigned)
         completed = sum(task.get("status") in COMPLETED_TASK_STATES for task in assigned)
         is_enabled = bool(enabled.get(key, True))
