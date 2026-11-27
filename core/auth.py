@@ -114,3 +114,8 @@ def show_login() -> bool:
             st.error("اسم المستخدم أو كلمة المرور غير صحيحة.")
 
     return False
+
+
+def check_password() -> bool:
+    """Compatibility entry point: show the login form and gate application access."""
+    return show_login()
