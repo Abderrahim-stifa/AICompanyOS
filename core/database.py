@@ -589,6 +589,17 @@ class Database:
             if row is None:
                 raise LookupError("task #{} not found".format(task_id))
             task = dict(row)
+            # role_agent_runs uses ON DELETE CASCADE; retain each full run snapshot
+            # in the audit log before the task deletion cascades those rows away.
+            role_runs = conn.execute(
+                "SELECT * FROM role_agent_runs WHERE task_id = ? ORDER BY id", (task_id,)
+            ).fetchall()
+            for run_row in role_runs:
+                run = dict(run_row)
+                _audit(
+                    conn, "CASCADE_DELETE", "ROLE_AGENT_RUN", run["id"], user_name,
+                    f"Role-agent run removed with task #{task_id}", old=run,
+                )
             # Detach linked financial records explicitly so every relationship change
             # is audited in the same transaction as task deletion.
             for table, entity_type in (("ledger", "LEDGER"), ("invoices", "INVOICE")):
