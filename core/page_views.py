@@ -1101,6 +1101,9 @@ def page_finance(company: Company) -> None:
 
 def page_settings(company: Company) -> None:
     st.header("⚙️ الإعدادات والنسخ الاحتياطي")
+    restore_notice = st.session_state.pop("backup_restore_notice", None)
+    if restore_notice:
+        st.success(restore_notice)
     s = company.settings
     preferences = load_ui_settings(s.db_path)
 
@@ -1132,9 +1135,58 @@ def page_settings(company: Company) -> None:
     if st.button("إنشاء نسخة احتياطية الآن"):
         path = backup_mod.create_backup(s.db_path, s.backup_dir, s.backup_keep)
         st.success(f"تم الحفظ: {path.name}")
-    backups = backup_mod.list_backups(s.backup_dir)
+    backups = list(reversed(backup_mod.list_backups(s.backup_dir)))
     if backups:
-        st.caption(f"عدد النسخ المحفوظة: {len(backups)} — آخرها: {backups[-1].name}")
+        st.caption(f"عدد النسخ المحفوظة: {len(backups)} — آخرها: {backups[0].name}")
+        st.markdown("**استعادة نسخة احتياطية**")
+        backup_options = {path.name: path for path in backups}
+        selected_backup_name = st.selectbox(
+            "اختر النسخة المراد استعادتها", list(backup_options),
+            key="selected_backup_restore",
+        )
+        selected_backup = backup_options[selected_backup_name]
+        backup_info = None
+        try:
+            backup_info = backup_mod.inspect_backup(str(selected_backup))
+            st.caption(
+                f"الحجم: {backup_info['size_bytes']:,} بايت · "
+                f"تاريخ النسخة: {backup_info['modified_at']} · "
+                f"سلامة SQLite: {backup_info['integrity']}"
+            )
+            st.caption(f"الجداول الموجودة: {len(backup_info['tables'])}")
+        except (FileNotFoundError, ValueError, OSError, sqlite3.Error) as exc:
+            st.error(f"لا يمكن استخدام هذه النسخة: {exc}")
+
+        st.warning(
+            "الاستعادة ستستبدل قاعدة البيانات الحالية. ينشئ النظام أولاً نسخة أمان "
+            "مستقلة من قاعدة البيانات الحالية ولا يحذفها."
+        )
+        confirmed = st.checkbox(
+            "أؤكد استبدال قاعدة البيانات الحالية بهذه النسخة",
+            key=f"confirm_restore_{selected_backup.name}",
+            disabled=backup_info is None,
+        )
+        if st.button(
+            "استعادة قاعدة البيانات",
+            key="restore_selected_backup",
+            type="primary",
+            disabled=backup_info is None or not confirmed,
+        ):
+            try:
+                safety_copy = backup_mod.restore_backup(str(selected_backup), s.db_path)
+                safety_name = safety_copy.name if safety_copy else "لم تكن هناك قاعدة سابقة"
+                st.session_state["backup_restore_notice"] = (
+                    f"تمت الاستعادة من {selected_backup.name}. "
+                    f"نسخة الأمان السابقة: {safety_name}."
+                )
+                get_company.clear()
+                get_tasks.clear()
+                get_dashboard_data.clear()
+                st.rerun()
+            except (FileNotFoundError, ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"فشلت الاستعادة ولم يتم اعتماد النسخة: {exc}")
+    else:
+        st.info("لا توجد نسخ احتياطية متاحة للاستعادة.")
 
     st.subheader("صيانة قاعدة البيانات")
     st.caption("يعيد VACUUM بناء ملف SQLite ويستعيد الصفحات غير المستخدمة بعد الحذف. قد يستغرق وقتاً ويحتاج مساحة مؤقتة إضافية.")
