@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from core import backup as backup_mod
 from core.auth import check_password, logout
 from core.auth_context import CurrentUser
 from core.page_views import get_company, get_dashboard_data, invalidate_task_caches
@@ -26,6 +27,10 @@ if not check_password():
 
 # 2. Bind the authenticated identity to the audit context.
 CurrentUser.set_username(st.session_state.get("username", "system"))
+
+# 2a. Create a daily database backup after authentication, at most once per 24h.
+company = get_company()
+backup_mod.auto_backup_if_needed(company.settings.db_path, company.settings.backup_dir)
 
 # 3. Streamlit-native page registry. Only these scripts are navigable;
 # helper modules in pages/ remain internal imports.
