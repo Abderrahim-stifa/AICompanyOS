@@ -646,8 +646,12 @@ def page_tasks(company: Company) -> None:
             role_agent = st.selectbox(
                 "الوكيل المتخصص (اختياري — يتطلب تأكيدك)", role_options
             )
-            selected_client = st.selectbox("العميل المرتبط (اختياري)", list(client_options))
-            selected_project = st.selectbox("المشروع المرتبط (اختياري)", list(project_options))
+            selected_client = st.selectbox(
+                "العميل المرتبط (اختياري)", list(client_options), key="task_create_client"
+            )
+            selected_project = st.selectbox(
+                "المشروع المرتبط (اختياري)", list(project_options), key="task_create_project"
+            )
             if st.form_submit_button("💾 إنشاء المهمة"):
                 try:
                     created = company.add_task({
@@ -703,6 +707,26 @@ def page_tasks(company: Company) -> None:
                                      if key == selected.get("role_agent_key")), "— بدون إسناد —")
                 edit_role = st.selectbox("وكيل الدور", list(role_labels),
                                          index=list(role_labels).index(current_role))
+                current_client = next(
+                    (label for label, value in client_options.items()
+                     if value == selected.get("client_id")),
+                    "— بدون عميل —",
+                )
+                current_project = next(
+                    (label for label, value in project_options.items()
+                     if value == selected.get("project_id")),
+                    "— بدون مشروع —",
+                )
+                edit_client = st.selectbox(
+                    "العميل المرتبط", list(client_options),
+                    index=list(client_options).index(current_client),
+                    key="task_edit_client",
+                )
+                edit_project = st.selectbox(
+                    "المشروع المرتبط", list(project_options),
+                    index=list(project_options).index(current_project),
+                    key="task_edit_project",
+                )
                 if st.form_submit_button("حفظ التعديلات"):
                     try:
                         company.update_task(selected["id"], {
