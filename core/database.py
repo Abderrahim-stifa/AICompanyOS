@@ -194,11 +194,14 @@ class Database:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
-    def connect(self):
-        conn = sqlite3.connect(self.path)
+    def connect(self, *, immediate: bool = False):
+        """Open a connection; immediate=True serializes read-check-write transactions."""
+        conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         try:
+            if immediate:
+                conn.execute("BEGIN IMMEDIATE")
             yield conn
             conn.commit()
         except Exception:
@@ -871,7 +874,7 @@ class Database:
         return row
 
     def issue_invoice(self, invoice_id: int, user_name: str = "system") -> dict:
-        with self.connect() as conn:
+        with self.connect(immediate=True) as conn:
             old_row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
             if old_row is None:
                 raise LookupError(f"invoice #{invoice_id} not found")
@@ -900,7 +903,7 @@ class Database:
             raise ValueError("today must use YYYY-MM-DD format") from None
 
         transitioned = []
-        with self.connect() as conn:
+        with self.connect(immediate=True) as conn:
             rows = conn.execute(
                 """SELECT * FROM invoices
                    WHERE status IN ('issued', 'partially_paid')
@@ -928,7 +931,7 @@ class Database:
                        payment_date: str, method: str = "other", reference: str | None = None,
                        note: str = "", user_name: str = "system") -> dict:
         """Record a payment and its income ledger row atomically; references are idempotent."""
-        with self.connect() as conn:
+        with self.connect(immediate=True) as conn:
             invoice_row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
             if invoice_row is None:
                 raise LookupError(f"invoice #{invoice_id} not found")
@@ -980,7 +983,7 @@ class Database:
         return payment
 
     def void_invoice(self, invoice_id: int, reason: str, user_name: str = "system") -> dict:
-        with self.connect() as conn:
+        with self.connect(immediate=True) as conn:
             row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
             if row is None:
                 raise LookupError(f"invoice #{invoice_id} not found")
@@ -1007,7 +1010,7 @@ class Database:
                        reference: str | None = None, note: str = "",
                        user_name: str = "system") -> dict:
         """Record a partial/full refund and matching expense ledger entry atomically."""
-        with self.connect() as conn:
+        with self.connect(immediate=True) as conn:
             payment_row = conn.execute(
                 """SELECT p.*, i.task_id, i.invoice_number, i.id AS invoice_id,
                           i.amount AS invoice_amount
