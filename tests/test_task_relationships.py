@@ -154,5 +154,5 @@ def test_invalid_relationship_update_is_rejected(tmp_path):
     service = TaskService(db, default_currency="MAD")
     task = service.create_task(_task_data())
 
-    with pytest.raises(LookupError, match="project"):
+    with pytest.raises(ValueError, match="project"):
         service.update_task(task["id"], {"project_id": 123456})
