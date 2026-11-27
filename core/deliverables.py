@@ -49,6 +49,7 @@ class DeliverableStore:
                     content TEXT NOT NULL,
                     sources_json TEXT NOT NULL DEFAULT '[]',
                     assumptions_json TEXT NOT NULL DEFAULT '[]',
+                    generation_metadata_json TEXT NOT NULL DEFAULT '{}',
                     owner TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'draft'
                         CHECK(status IN ('draft','in_review','approved','rejected')),
@@ -69,11 +70,18 @@ class DeliverableStore:
                     content TEXT NOT NULL,
                     sources_json TEXT NOT NULL,
                     assumptions_json TEXT NOT NULL,
+                    generation_metadata_json TEXT NOT NULL DEFAULT '{}',
                     owner TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     UNIQUE(deliverable_id, version)
                 )
             """)
+            for table in ("deliverables", "deliverable_versions"):
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if "generation_metadata_json" not in columns:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN generation_metadata_json TEXT NOT NULL DEFAULT '{{}}'"
+                    )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_deliverables_project ON deliverables(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_deliverables_domain ON deliverables(domain)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_deliverable_versions_parent ON deliverable_versions(deliverable_id, version)")
@@ -83,6 +91,7 @@ class DeliverableStore:
         item = dict(row)
         item["sources"] = json.loads(item.pop("sources_json"))
         item["assumptions"] = json.loads(item.pop("assumptions_json"))
+        item["generation_metadata"] = json.loads(item.pop("generation_metadata_json", "{}") or "{}")
         return item
 
     @staticmethod
@@ -96,7 +105,8 @@ class DeliverableStore:
 
     def create(self, project_id: int, domain: str, title: str, content: str,
                owner: str, sources: list[str] | None = None,
-               assumptions: list[str] | None = None) -> dict:
+               assumptions: list[str] | None = None,
+               generation_metadata: dict | None = None) -> dict:
         if domain not in DOMAINS:
             raise ValidationError("مجال المخرج غير صالح.")
         title = _required_text(title, "العنوان", 200)
@@ -104,31 +114,46 @@ class DeliverableStore:
         owner = _required_text(owner, "المسؤول", 100)
         sources = self._clean_list(sources, "المصادر")
         assumptions = self._clean_list(assumptions, "الافتراضات")
+        metadata_json = self._clean_metadata(generation_metadata)
         now = _now()
         with self.db.connect(immediate=True) as conn:
             if conn.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone() is None:
                 raise LookupError(f"project #{project_id} not found")
             cur = conn.execute(
                 """INSERT INTO deliverables
-                   (project_id,domain,title,content,sources_json,assumptions_json,owner,
+                   (project_id,domain,title,content,sources_json,assumptions_json,generation_metadata_json,owner,
                     status,version,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,'draft',1,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,'draft',1,?,?)""",
                 (project_id,domain,title,content,json.dumps(sources,ensure_ascii=False),
-                 json.dumps(assumptions,ensure_ascii=False),owner,now,now),
+                 json.dumps(assumptions,ensure_ascii=False),metadata_json,owner,now,now),
             )
             did = cur.lastrowid
             conn.execute(
                 """INSERT INTO deliverable_versions
-                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,owner,created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,generation_metadata_json,owner,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (did,project_id,1,title,content,json.dumps(sources,ensure_ascii=False),
-                 json.dumps(assumptions,ensure_ascii=False),owner,now),
+                 json.dumps(assumptions,ensure_ascii=False),metadata_json,owner,now),
             )
             self._audit(conn,"DELIVERABLE_CREATED",did,owner,f"project={project_id}; domain={domain}; version=1")
         return self.get(did)
 
     @staticmethod
-    def _clean_list(values: list[str] | None, label: str) -> list[str]:
+    def _clean_metadata(value: dict | None) -> str:
+        if value is None:
+            value = {}
+        if not isinstance(value, dict):
+            raise ValidationError("بيانات مصدر المسودة غير صالحة.")
+        try:
+            encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            raise ValidationError("بيانات مصدر المسودة غير صالحة.") from None
+        if len(encoded) > 4000:
+            raise ValidationError("بيانات مصدر المسودة تجاوزت الحد المسموح.")
+        return encoded
+
+    @staticmethod
+    def _clean_list(values: list[str] | None, label: str):
         if values is None:
             return []
         if not isinstance(values, list) or len(values) > 50:
@@ -140,12 +165,14 @@ class DeliverableStore:
 
     def revise(self, deliverable_id: int, title: str, content: str, owner: str,
                sources: list[str] | None = None,
-               assumptions: list[str] | None = None) -> dict:
+               assumptions: list[str] | None = None,
+               generation_metadata: dict | None = None) -> dict:
         title = _required_text(title, "العنوان", 200)
         content = _required_text(content, "المحتوى")
         owner = _required_text(owner, "المسؤول", 100)
         sources = self._clean_list(sources, "المصادر")
         assumptions = self._clean_list(assumptions, "الافتراضات")
+        metadata_json = self._clean_metadata(generation_metadata)
         now = _now()
         with self.db.connect(immediate=True) as conn:
             row = conn.execute("SELECT * FROM deliverables WHERE id=?", (deliverable_id,)).fetchone()
@@ -156,15 +183,15 @@ class DeliverableStore:
             assumptions_json = json.dumps(assumptions,ensure_ascii=False)
             conn.execute(
                 """UPDATE deliverables SET title=?,content=?,sources_json=?,assumptions_json=?,
-                   owner=?,status='draft',version=?,reviewer=NULL,review_note='',updated_at=?
+                   generation_metadata_json=?,owner=?,status='draft',version=?,reviewer=NULL,review_note='',updated_at=?
                    WHERE id=?""",
-                (title,content,source_json,assumptions_json,owner,version,now,deliverable_id),
+                (title,content,source_json,assumptions_json,metadata_json,owner,version,now,deliverable_id),
             )
             conn.execute(
                 """INSERT INTO deliverable_versions
-                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,owner,created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (deliverable_id,row["project_id"],version,title,content,source_json,assumptions_json,owner,now),
+                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,generation_metadata_json,owner,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (deliverable_id,row["project_id"],version,title,content,source_json,assumptions_json,metadata_json,owner,now),
             )
             self._audit(conn,"DELIVERABLE_REVISED",deliverable_id,owner,f"version={version}; review reset to draft")
         return self.get(deliverable_id)
@@ -215,4 +242,9 @@ class DeliverableStore:
                 "SELECT * FROM deliverable_versions WHERE deliverable_id=? ORDER BY version DESC",
                 (deliverable_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        versions = []
+        for row in rows:
+            item = dict(row)
+            item["generation_metadata"] = json.loads(item.pop("generation_metadata_json", "{}") or "{}")
+            versions.append(item)
+        return versions
