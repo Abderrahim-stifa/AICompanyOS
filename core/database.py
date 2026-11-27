@@ -758,6 +758,41 @@ class Database:
         log.info("ledger %s %.2f %s", entry["kind"], entry["amount"], entry["currency"])
         return row
 
+    def update_ledger_entry(self, entry_id: int, entry: dict, user_name: str = "system") -> dict:
+        """Update a ledger row and atomically record before/after audit snapshots."""
+        with self.connect() as conn:
+            old_row = conn.execute("SELECT * FROM ledger WHERE id = ?", (entry_id,)).fetchone()
+            if old_row is None:
+                raise LookupError(f"ledger entry #{entry_id} not found")
+            if entry.get("task_id") is not None and conn.execute(
+                "SELECT 1 FROM tasks WHERE id = ?", (entry["task_id"],)
+            ).fetchone() is None:
+                raise LookupError(f"task #{entry['task_id']} not found")
+            old = dict(old_row)
+            conn.execute(
+                """UPDATE ledger SET task_id = :task_id, kind = :kind, amount = :amount,
+                   currency = :currency, note = :note WHERE id = :id""",
+                {**entry, "id": entry_id},
+            )
+            new = dict(conn.execute("SELECT * FROM ledger WHERE id = ?", (entry_id,)).fetchone())
+            _audit(conn, "UPDATE", "LEDGER", entry_id, user_name,
+                   f"{new['kind']} {new['amount']:g} {new['currency']}",
+                   old=old, new=new)
+        log.info("ledger entry #%s updated", entry_id)
+        return new
+
+    def delete_ledger_entry(self, entry_id: int, user_name: str = "system") -> None:
+        """Delete a ledger row while retaining its complete audit snapshot."""
+        with self.connect() as conn:
+            old_row = conn.execute("SELECT * FROM ledger WHERE id = ?", (entry_id,)).fetchone()
+            if old_row is None:
+                raise LookupError(f"ledger entry #{entry_id} not found")
+            old = dict(old_row)
+            _audit(conn, "DELETE", "LEDGER", entry_id, user_name,
+                   f"{old['kind']} {old['amount']:g} {old['currency']}", old=old)
+            conn.execute("DELETE FROM ledger WHERE id = ?", (entry_id,))
+        log.info("ledger entry #%s deleted", entry_id)
+
     def list_ledger(self) -> list[dict]:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM ledger ORDER BY id DESC")]
