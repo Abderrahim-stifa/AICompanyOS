@@ -167,3 +167,60 @@ def test_invalid_relationship_update_is_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="project"):
         service.update_task(task["id"], {"project_id": 123456})
+
+
+def test_client_deletion_audits_all_detached_relationships_and_preserves_invoice_snapshot(tmp_path):
+    import json
+
+    db = _database(tmp_path)
+    client = db.add_client({"name": "Audited client", "email": "", "phone": ""})
+    project = db.add_project({
+        "name": "Client project", "client_id": client["id"], "status": "new",
+        "budget": 100, "currency": "MAD",
+    })
+    task = TaskService(db, default_currency="MAD").create_task(
+        _task_data(client_id=client["id"], project_id=project["id"], price=500)
+    )
+    invoice = db.create_invoice(task["id"])
+
+    db.delete_client(client["id"], user_name="Owner")
+
+    assert db.get_task(task["id"])["client_id"] is None
+    projects = db.list_projects()
+    assert next(row for row in projects if row["id"] == project["id"])["client_id"] is None
+    saved_invoice = next(row for row in db.list_invoices() if row["id"] == invoice["id"])
+    assert saved_invoice["client_id"] is None
+    assert saved_invoice["client_name"] == "Audited client"
+
+    events = [row for row in db.list_system_logs() if row["action"] == "UNLINK_CLIENT"]
+    assert {(row["entity_type"], row["entity_id"]) for row in events} == {
+        ("TASK", task["id"]), ("PROJECT", project["id"]), ("INVOICE", invoice["id"])
+    }
+    for event in events:
+        assert event["user_name"] == "Owner"
+        assert json.loads(event["old_values"])["client_id"] == client["id"]
+        assert json.loads(event["new_values"])["client_id"] is None
+
+
+def test_project_deletion_audits_detached_tasks(tmp_path):
+    import json
+
+    db = _database(tmp_path)
+    project = db.add_project({
+        "name": "Audited project", "client_id": None, "status": "new",
+        "budget": 0, "currency": "MAD",
+    })
+    task = TaskService(db, default_currency="MAD").create_task(
+        _task_data(project_id=project["id"])
+    )
+
+    db.delete_project(project["id"], user_name="ProjectOwner")
+
+    assert db.get_task(task["id"])["project_id"] is None
+    events = [row for row in db.list_system_logs() if row["action"] == "UNLINK_PROJECT"]
+    assert len(events) == 1
+    assert events[0]["entity_type"] == "TASK"
+    assert events[0]["entity_id"] == task["id"]
+    assert events[0]["user_name"] == "ProjectOwner"
+    assert json.loads(events[0]["old_values"])["project_id"] == project["id"]
+    assert json.loads(events[0]["new_values"])["project_id"] is None
