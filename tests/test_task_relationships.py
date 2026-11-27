@@ -224,3 +224,66 @@ def test_project_deletion_audits_detached_tasks(tmp_path):
     assert events[0]["user_name"] == "ProjectOwner"
     assert json.loads(events[0]["old_values"])["project_id"] == project["id"]
     assert json.loads(events[0]["new_values"])["project_id"] is None
+
+
+def test_client_delete_rolls_back_all_unlinks_and_audit_events_on_failure(tmp_path):
+    db = _database(tmp_path)
+    client = db.add_client({"name": "Rollback client", "email": "", "phone": ""})
+    project = db.add_project({
+        "name": "Rollback project", "client_id": client["id"], "status": "new",
+        "budget": 0, "currency": "MAD",
+    })
+    task = TaskService(db, default_currency="MAD").create_task(
+        _task_data(client_id=client["id"], project_id=project["id"], price=250)
+    )
+    invoice = db.create_invoice(task["id"])
+    with db.connect() as conn:
+        conn.execute("""
+            CREATE TRIGGER fail_invoice_client_unlink
+            BEFORE UPDATE OF client_id ON invoices
+            BEGIN SELECT RAISE(ABORT, 'forced invoice unlink failure'); END
+        """)
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced invoice unlink failure"):
+        db.delete_client(client["id"], user_name="RollbackActor")
+
+    assert any(row["id"] == client["id"] for row in db.list_clients())
+    assert db.get_task(task["id"])["client_id"] == client["id"]
+    assert next(row for row in db.list_projects() if row["id"] == project["id"])["client_id"] == client["id"]
+    saved_invoice = next(row for row in db.list_invoices() if row["id"] == invoice["id"])
+    assert saved_invoice["client_id"] == client["id"]
+    events = db.list_system_logs()
+    assert not any(
+        row["action"] in {"UNLINK_CLIENT", "DELETE"}
+        and row["user_name"] == "RollbackActor"
+        for row in events
+    )
+
+
+def test_project_delete_rolls_back_unlink_and_audit_on_failure(tmp_path):
+    db = _database(tmp_path)
+    project = db.add_project({
+        "name": "Rollback project", "client_id": None, "status": "new",
+        "budget": 0, "currency": "MAD",
+    })
+    task = TaskService(db, default_currency="MAD").create_task(
+        _task_data(project_id=project["id"])
+    )
+    with db.connect() as conn:
+        conn.execute("""
+            CREATE TRIGGER fail_task_project_unlink
+            BEFORE UPDATE OF project_id ON tasks
+            BEGIN SELECT RAISE(ABORT, 'forced project unlink failure'); END
+        """)
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced project unlink failure"):
+        db.delete_project(project["id"], user_name="RollbackActor")
+
+    assert any(row["id"] == project["id"] for row in db.list_projects())
+    assert db.get_task(task["id"])["project_id"] == project["id"]
+    events = db.list_system_logs()
+    assert not any(
+        row["action"] in {"UNLINK_PROJECT", "DELETE"}
+        and row["user_name"] == "RollbackActor"
+        for row in events
+    )
