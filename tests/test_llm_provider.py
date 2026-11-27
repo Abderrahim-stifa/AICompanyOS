@@ -69,6 +69,20 @@ class LLMProviderTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://api.openai.com/v1/chat/completions")
         self.assertIn("Bearer secret", request.get_header("Authorization"))
 
+    def test_remote_provider_failure_falls_back_to_offline(self):
+        class BrokenProvider:
+            name = "openai"
+            model = "test-model"
+
+            def generate(self, brief):
+                raise ProviderError("تعذر الاتصال بمزود LLM أو انتهت مهلة الاتصال.")
+
+        result = create_supervised_plan("أريد دراسة جدوى لمشروع", BrokenProvider())
+        self.assertEqual(result["provider"], "offline")
+        self.assertEqual(result["requested_provider"], "openai")
+        self.assertIn("fallback_reason", result)
+        self.assertFalse(result["execution_performed"])
+
     def test_invalid_structured_output_rejected(self):
         with self.assertRaises(ProviderError):
             validate_output({"summary": "ناقص"})
