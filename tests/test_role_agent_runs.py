@@ -1,5 +1,4 @@
 """Persistence and approval-gate tests for role-agent runs."""
-import json
 import sqlite3
 import tempfile
 import unittest
