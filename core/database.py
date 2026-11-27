@@ -124,6 +124,20 @@ class Database:
         finally:
             conn.close()
 
+
+    def vacuum(self) -> None:
+        """Rebuild the SQLite database and reclaim unused pages.
+
+        VACUUM must run outside a transaction, so it uses a dedicated
+        autocommit connection rather than the regular connect() context.
+        """
+        conn = sqlite3.connect(self.path, isolation_level=None, timeout=30)
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+        log.info("database vacuum completed for %s", self.path)
+
     def init(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
