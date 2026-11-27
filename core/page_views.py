@@ -316,7 +316,7 @@ def page_agent_runs(company: Company) -> None:
         selected_task = task_options[selected_label]
         if st.button("إنشاء خطة الوكيل للمهمة", type="primary"):
             try:
-                brief = (selected_task.get("title", "") + "\\n" +
+                brief = (selected_task.get("title", "") + "\n" +
                          selected_task.get("description", "")).strip()
                 plan = role_agents.run_agent(selected_task["role_agent_key"], brief)
                 run = company.db.create_role_agent_run(
