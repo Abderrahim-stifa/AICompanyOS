@@ -8,7 +8,7 @@ def search_tasks(
     clients: list[dict] | None = None,
     projects: list[dict] | None = None,
 ) -> list[dict]:
-    """Filter tasks by title, description, or linked client name."""
+    """Filter tasks by title, description, or linked client/project name."""
     normalized_query = (query or "").strip().casefold()
     if not normalized_query:
         return list(tasks)
