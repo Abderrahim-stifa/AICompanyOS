@@ -32,14 +32,14 @@ with st.expander("إنشاء مخرج جديد", expanded=True):
         domain_label = st.selectbox("مجال العمل", list(domain_labels))
         title = st.text_input("عنوان المخرج", max_chars=200)
         content = st.text_area("المحتوى أو المواصفات أو التحليل", height=180, max_chars=20000)
-        owner = st.text_input("المسؤول", value=CurrentUser.get_username(), max_chars=100)
+        st.caption(f"المسؤول المسجل: {CurrentUser.get_username()}")
         sources_raw = st.text_area("المصادر (مصدر في كل سطر)", height=70)
         assumptions_raw = st.text_area("الافتراضات (افتراض في كل سطر)", height=70)
         submitted = st.form_submit_button("حفظ الإصدار الأول", type="primary")
     if submitted:
         try:
             item = store.create(
-                project_id,domain_labels[domain_label],title,content,owner,
+                project_id,domain_labels[domain_label],title,content,CurrentUser.get_username(),
                 [x.strip() for x in sources_raw.splitlines() if x.strip()],
                 [x.strip() for x in assumptions_raw.splitlines() if x.strip()],
             )
@@ -76,13 +76,13 @@ for item in items:
             st.markdown("**إنشاء إصدار جديد**")
             new_title = st.text_input("العنوان الجديد", value=item["title"], key=f"title_{item['id']}")
             new_content = st.text_area("المحتوى الجديد", value=item["content"], height=130, key=f"content_{item['id']}")
-            new_owner = st.text_input("المسؤول عن الإصدار", value=CurrentUser.get_username(), key=f"owner_{item['id']}")
+            st.caption(f"المسؤول عن الإصدار الجديد: {CurrentUser.get_username()}")
             new_sources = st.text_area("المصادر الجديدة", value="\n".join(item["sources"]), key=f"sources_{item['id']}")
             new_assumptions = st.text_area("الافتراضات الجديدة", value="\n".join(item["assumptions"]), key=f"assumptions_{item['id']}")
             revise = st.form_submit_button("حفظ كإصدار جديد")
         if revise:
             try:
-                store.revise(item["id"],new_title,new_content,new_owner,
+                store.revise(item["id"],new_title,new_content,CurrentUser.get_username(),
                     [x.strip() for x in new_sources.splitlines() if x.strip()],
                     [x.strip() for x in new_assumptions.splitlines() if x.strip()])
                 st.success("تم حفظ إصدار جديد وإرجاع حالته إلى مسودة.")
@@ -91,7 +91,8 @@ for item in items:
                 st.error(str(exc))
 
         st.markdown("**المراجعة والاعتماد الداخلي**")
-        reviewer = st.text_input("اسم المراجع", value=CurrentUser.get_username(), key=f"reviewer_{item['id']}")
+        reviewer = CurrentUser.get_username()
+        st.caption(f"المراجع المسجل: {reviewer}")
         review_note = st.text_area("ملاحظة المراجعة", key=f"note_{item['id']}")
         c1,c2,c3 = st.columns(3)
         if c1.button("إرسال للمراجعة", key=f"review_{item['id']}"):
