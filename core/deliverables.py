@@ -63,6 +63,7 @@ class DeliverableStore:
                 CREATE TABLE IF NOT EXISTS deliverable_versions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     deliverable_id INTEGER NOT NULL REFERENCES deliverables(id) ON DELETE CASCADE,
+                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
                     version INTEGER NOT NULL,
                     title TEXT NOT NULL,
                     content TEXT NOT NULL,
@@ -118,9 +119,9 @@ class DeliverableStore:
             did = cur.lastrowid
             conn.execute(
                 """INSERT INTO deliverable_versions
-                   (deliverable_id,version,title,content,sources_json,assumptions_json,owner,created_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (did,1,title,content,json.dumps(sources,ensure_ascii=False),
+                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,owner,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (did,project_id,1,title,content,json.dumps(sources,ensure_ascii=False),
                  json.dumps(assumptions,ensure_ascii=False),owner,now),
             )
             self._audit(conn,"DELIVERABLE_CREATED",did,owner,f"project={project_id}; domain={domain}; version=1")
@@ -161,9 +162,9 @@ class DeliverableStore:
             )
             conn.execute(
                 """INSERT INTO deliverable_versions
-                   (deliverable_id,version,title,content,sources_json,assumptions_json,owner,created_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (deliverable_id,version,title,content,source_json,assumptions_json,owner,now),
+                   (deliverable_id,project_id,version,title,content,sources_json,assumptions_json,owner,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (deliverable_id,row["project_id"],version,title,content,source_json,assumptions_json,owner,now),
             )
             self._audit(conn,"DELIVERABLE_REVISED",deliverable_id,owner,f"version={version}; review reset to draft")
         return self.get(deliverable_id)
