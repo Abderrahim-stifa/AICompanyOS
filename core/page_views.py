@@ -925,6 +925,7 @@ def page_finance(company: Company) -> None:
                     except (ValidationError, LookupError, ValueError) as exc:
                         fail(exc)
 
+    company.mark_overdue_invoices(user_name=CurrentUser.get_username())
     invoices = company.db.list_invoices()
     if invoices:
         invoice_rows = []
