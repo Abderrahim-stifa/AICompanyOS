@@ -897,6 +897,126 @@ def page_finance(company: Company) -> None:
                     fail(exc)
 
 
+    st.divider()
+    st.subheader("الفواتير والمدفوعات")
+    with st.expander("إنشاء فاتورة من مهمة", expanded=False):
+        billable_tasks = [task for task in tasks if float(task.get("price") or 0) > 0]
+        if not billable_tasks:
+            st.info("لا توجد مهام ذات مبلغ أكبر من صفر لإنشاء فاتورة.")
+        else:
+            billable_options = {
+                f"#{task['id']} — {task['title']} · {task['price']:,.2f} {task['currency']}": task
+                for task in billable_tasks
+            }
+            with st.form("create_invoice_form"):
+                selected_task_label = st.selectbox("المهمة", list(billable_options))
+                due_date = st.date_input("تاريخ الاستحقاق (اختياري)", value=None)
+                invoice_notes = st.text_area("ملاحظات الفاتورة", max_chars=1000)
+                if st.form_submit_button("إنشاء مسودة فاتورة"):
+                    try:
+                        created = company.create_invoice(
+                            billable_options[selected_task_label]["id"],
+                            due_date=due_date.isoformat() if due_date else None,
+                            notes=invoice_notes,
+                            user_name=CurrentUser.get_username(),
+                        )
+                        st.success(f"تم إنشاء الفاتورة {created['invoice_number']} كمسودة.")
+                        st.rerun()
+                    except (ValidationError, LookupError, ValueError) as exc:
+                        fail(exc)
+
+    invoices = company.db.list_invoices()
+    if invoices:
+        invoice_rows = []
+        for invoice in invoices:
+            balance = round(float(invoice["amount"]) - float(invoice["paid_amount"]), 2)
+            invoice_rows.append({
+                "رقم الفاتورة": invoice["invoice_number"],
+                "المهمة": invoice["task_title"],
+                "العميل": invoice["client_name"],
+                "الإجمالي": f"{invoice['amount']:,.2f} {invoice['currency']}",
+                "المدفوع": f"{invoice['paid_amount']:,.2f} {invoice['currency']}",
+                "المتبقي": f"{balance:,.2f} {invoice['currency']}",
+                "الحالة": invoice["status"],
+                "الاستحقاق": invoice["due_date"] or "—",
+            })
+        st.dataframe(invoice_rows, width="stretch", hide_index=True)
+        invoice_options = {
+            f"{item['invoice_number']} — {item['task_title']} ({item['status']})": item
+            for item in invoices
+        }
+        selected_invoice_label = st.selectbox(
+            "الفاتورة", list(invoice_options), key="invoice_action_select"
+        )
+        selected_invoice = invoice_options[selected_invoice_label]
+        paid_amount = float(selected_invoice["paid_amount"])
+        remaining = round(float(selected_invoice["amount"]) - paid_amount, 2)
+        if selected_invoice["status"] == "draft":
+            st.warning("هذه فاتورة مسودة؛ يجب إصدارها قبل تسجيل أي دفعة.")
+            if st.button("إصدار الفاتورة", key=f"issue_invoice_{selected_invoice['id']}"):
+                try:
+                    company.issue_invoice(
+                        selected_invoice["id"], user_name=CurrentUser.get_username()
+                    )
+                    st.success("تم إصدار الفاتورة وتسجيل انتقال الحالة في سجل التدقيق.")
+                    st.rerun()
+                except (ValueError, LookupError) as exc:
+                    fail(exc)
+        elif selected_invoice["status"] in {"issued", "partially_paid", "overdue"} and remaining > 0:
+            st.caption(f"الرصيد المتبقي: {remaining:,.2f} {selected_invoice['currency']}")
+            with st.form(f"record_payment_{selected_invoice['id']}"):
+                payment_amount = st.number_input(
+                    "مبلغ الدفعة", min_value=0.01, max_value=remaining,
+                    value=min(remaining, max(0.01, remaining)), step=1.0,
+                )
+                payment_date = st.date_input("تاريخ الدفع")
+                payment_method = st.selectbox(
+                    "طريقة الدفع",
+                    ["cash", "bank_transfer", "card", "online", "other"],
+                    format_func=lambda value: {
+                        "cash": "نقداً", "bank_transfer": "تحويل بنكي",
+                        "card": "بطاقة", "online": "دفع إلكتروني", "other": "أخرى",
+                    }[value],
+                )
+                payment_reference = st.text_input("مرجع الدفع (اختياري)", max_chars=100)
+                payment_note = st.text_input("ملاحظة الدفعة", max_chars=500)
+                if st.form_submit_button("تسجيل الدفعة"):
+                    try:
+                        company.record_payment(
+                            selected_invoice["id"],
+                            {
+                                "amount": payment_amount,
+                                "currency": selected_invoice["currency"],
+                                "payment_date": payment_date.isoformat(),
+                                "method": payment_method,
+                                "reference": payment_reference,
+                                "note": payment_note,
+                            },
+                            user_name=CurrentUser.get_username(),
+                        )
+                        st.success("تم تسجيل الدفعة وربطها تلقائياً بقيد دخل.")
+                        st.rerun()
+                    except (ValidationError, LookupError, ValueError) as exc:
+                        fail(exc)
+        elif selected_invoice["status"] == "paid":
+            st.success("تم سداد الفاتورة بالكامل.")
+        elif selected_invoice["status"] == "void":
+            st.info("الفاتورة ملغاة ولا تقبل دفعات.")
+        payments = company.db.list_payments(selected_invoice["id"])
+        if payments:
+            st.caption("سجل دفعات الفاتورة")
+            st.dataframe(
+                [{
+                    "التاريخ": item["payment_date"],
+                    "المبلغ": f"{item['amount']:,.2f} {item['currency']}",
+                    "الطريقة": item["method"],
+                    "المرجع": item["reference"] or "—",
+                    "ملاحظة": item["note"],
+                } for item in payments],
+                width="stretch", hide_index=True,
+            )
+
+
 def page_settings(company: Company) -> None:
     st.header("⚙️ الإعدادات والنسخ الاحتياطي")
     s = company.settings
