@@ -57,6 +57,8 @@ class DeliverableStoreTests(unittest.TestCase):
         self.assertEqual([v["version"] for v in versions],[2,1])
         self.assertEqual(versions[1]["content"],"Initial requirements document")
         self.assertEqual(versions[0]["owner"],"owner-b")
+        self.assertEqual(versions[0]["project_id"],self.project_id)
+        self.assertEqual(versions[1]["project_id"],self.project_id)
 
     def test_approval_requires_review_state(self):
         item = self.create_item()
