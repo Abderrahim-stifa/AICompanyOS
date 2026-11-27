@@ -11,7 +11,7 @@ import streamlit as st
 
 from core import agents as agents_mod
 from core.auth_context import CurrentUser
-from core.auth import show_login, logout
+from core.auth import check_password, logout
 from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
@@ -616,7 +616,7 @@ PAGES = {
 
 def main() -> None:
     apply_custom_theme()
-    if not show_login():
+    if not check_password():
         return
 
     authenticated_username = st.session_state.get("username", "")
