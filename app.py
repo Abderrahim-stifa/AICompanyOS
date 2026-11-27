@@ -38,6 +38,7 @@ navigation = st.navigation(
         st.Page("pages/dashboard.py", title="لوحة التحكم", icon="📊", default=True),
         st.Page("pages/agents.py", title="الوكلاء", icon="🤖"),
         st.Page("pages/role_agents.py", title="الوكلاء السبعة", icon="🧠"),
+        st.Page("pages/request_planner.py", title="الطلبات متعددة التخصصات", icon="🧩"),
         st.Page("pages/agent_runs.py", title="موافقات تشغيل الوكلاء", icon="🧾"),
         st.Page("pages/clients.py", title="العملاء", icon="👥"),
         st.Page("pages/projects.py", title="المشاريع", icon="📂"),
