@@ -14,18 +14,21 @@ class SmartTaskAnalyzerTests(unittest.TestCase):
         self.assertEqual(result["category"], "programming")
         self.assertEqual(result["priority"], "urgent")
         self.assertEqual(result["suggested_agent"], "executor")
+        self.assertEqual(result["suggested_role_agent"], "engineer")
 
     def test_detects_accounting_and_high_priority(self):
         result = SmartTaskAnalyzer.analyze_and_classify("مهم هذا الأسبوع: مراجعة فاتورة وراتب الموظفين")
         self.assertEqual(result["category"], "accounting")
         self.assertEqual(result["priority"], "high")
         self.assertEqual(result["suggested_agent"], "accountant")
+        self.assertEqual(result["suggested_role_agent"], "accountant")
 
     def test_unknown_text_defaults_to_general_and_normal(self):
         result = SmartTaskAnalyzer.analyze_and_classify("متابعة موضوع جديد")
         self.assertEqual(result["category"], "general")
         self.assertEqual(result["priority"], "normal")
         self.assertEqual(result["suggested_agent"], "classifier")
+        self.assertEqual(result["suggested_role_agent"], "consultant")
 
     def test_pipeline_persists_inferred_category_and_priority(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -43,6 +46,8 @@ class SmartTaskAnalyzerTests(unittest.TestCase):
             updated = db.get_task(task["id"])
             self.assertEqual(updated["category"], "marketing")
             self.assertEqual(updated["priority"], "urgent")
+            events = db.list_activity()
+            self.assertTrue(any("الوكيل المتخصص المقترح: marketing" in row["action"] for row in events))
 
 
 if __name__ == "__main__":
