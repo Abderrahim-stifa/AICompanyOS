@@ -56,5 +56,42 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(target.exists())
 
 
+    def test_auto_backup_creates_first_backup(self):
+        from core.backup import auto_backup_if_needed
+
+        backup = auto_backup_if_needed(str(self.db), str(self.root / "automatic"))
+        self.assertIsNotNone(backup)
+        self.assertTrue(backup.exists())
+
+    def test_auto_backup_skips_when_latest_is_fresh(self):
+        from core.backup import auto_backup_if_needed
+
+        backup_dir = self.root / "automatic"
+        first = create_backup(str(self.db), str(backup_dir))
+        result = auto_backup_if_needed(str(self.db), str(backup_dir))
+        self.assertIsNone(result)
+        self.assertEqual(list_backups(str(backup_dir)), [first])
+
+    def test_auto_backup_runs_after_24_hours(self):
+        from datetime import datetime, timedelta
+        from core.backup import auto_backup_if_needed
+
+        backup_dir = self.root / "automatic"
+        first = create_backup(str(self.db), str(backup_dir))
+        old_time = (datetime.now() - timedelta(hours=25)).timestamp()
+        import os
+        os.utime(first, (old_time, old_time))
+
+        result = auto_backup_if_needed(str(self.db), str(backup_dir))
+        self.assertIsNotNone(result)
+        self.assertEqual(len(list_backups(str(backup_dir))), 2)
+
+    def test_auto_backup_rejects_invalid_interval(self):
+        from core.backup import auto_backup_if_needed
+
+        with self.assertRaises(ValueError):
+            auto_backup_if_needed(str(self.db), str(self.root / "automatic"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
