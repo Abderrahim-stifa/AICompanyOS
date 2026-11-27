@@ -37,7 +37,81 @@ class DeliverableStoreTests(unittest.TestCase):
         self.assertEqual(item["version"],1)
         self.assertEqual(item["status"],"draft")
         self.assertEqual(item["project_id"],self.project_id)
+        self.assertEqual(item["generation_metadata"],{})
         self.assertEqual(len(self.store.versions(item["id"])),1)
+
+    def test_generation_provenance_is_persisted_on_record_and_immutable_version(self):
+        metadata = {
+            "provider": "openai",
+            "model": "test-model",
+            "mode": "LLM",
+            "verification": "not_verified",
+            "approved": False,
+            "execution_performed": False,
+        }
+        item = self.store.create(
+            self.project_id,"software","Draft","Generated draft","owner-a",
+            [],["Assumption"],metadata,
+        )
+        self.assertEqual(item["generation_metadata"],metadata)
+        version = self.store.versions(item["id"])[0]
+        self.assertEqual(version["generation_metadata"],metadata)
+
+        revised_metadata = {"provider":"offline","model":"rules-v1","verification":"not_verified"}
+        revised = self.store.revise(
+            item["id"],"Draft v2","Revised content","owner-b",[],[],revised_metadata
+        )
+        versions = self.store.versions(item["id"])
+        self.assertEqual(revised["generation_metadata"],revised_metadata)
+        self.assertEqual(versions[0]["generation_metadata"],revised_metadata)
+        self.assertEqual(versions[1]["generation_metadata"],metadata)
+
+    def test_invalid_generation_metadata_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            self.store.create(
+                self.project_id,"software","Draft","Content","owner",
+                generation_metadata={"bad": object()},
+            )
+        with self.assertRaises(ValidationError):
+            self.store.create(
+                self.project_id,"software","Draft","Content","owner",
+                generation_metadata={"large":"x" * 5000},
+            )
+
+    def test_legacy_deliverable_tables_receive_additive_metadata_migration(self):
+        legacy_db = Database(os.path.join(self.tmp.name, "legacy.sqlite"))
+        legacy_db.init()
+        with legacy_db.connect() as conn:
+            conn.execute("""
+                CREATE TABLE deliverables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+                    domain TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+                    sources_json TEXT NOT NULL DEFAULT '[]',
+                    assumptions_json TEXT NOT NULL DEFAULT '[]',
+                    owner TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft',
+                    version INTEGER NOT NULL DEFAULT 1, reviewer TEXT,
+                    review_note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE deliverable_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    deliverable_id INTEGER NOT NULL REFERENCES deliverables(id) ON DELETE CASCADE,
+                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+                    version INTEGER NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+                    sources_json TEXT NOT NULL, assumptions_json TEXT NOT NULL,
+                    owner TEXT NOT NULL, created_at TEXT NOT NULL,
+                    UNIQUE(deliverable_id, version)
+                )
+            """)
+        legacy_store = DeliverableStore(legacy_db)
+        legacy_store.init()
+        with legacy_db.connect() as conn:
+            for table in ("deliverables","deliverable_versions"):
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                self.assertIn("generation_metadata_json",columns)
 
     def test_unknown_project_is_rejected(self):
         with self.assertRaises(LookupError):
