@@ -5,7 +5,8 @@ from pathlib import Path
 
 from core.agents import run_classifier
 from core.database import Database
-from core.smart_agent import SmartTaskAnalyzer
+from core.ai_agents import AGENTS
+from core.smart_agent import ROLE_AGENT_BY_CATEGORY, SmartTaskAnalyzer
 
 
 class SmartTaskAnalyzerTests(unittest.TestCase):
@@ -22,6 +23,13 @@ class SmartTaskAnalyzerTests(unittest.TestCase):
         self.assertEqual(result["priority"], "high")
         self.assertEqual(result["suggested_agent"], "accountant")
         self.assertEqual(result["suggested_role_agent"], "accountant")
+
+    def test_every_recommendation_targets_a_registered_role_agent(self):
+        self.assertTrue(set(ROLE_AGENT_BY_CATEGORY.values()).issubset(AGENTS))
+        self.assertEqual(set(ROLE_AGENT_BY_CATEGORY), {
+            "translation", "programming", "marketing", "accounting",
+            "design", "writing", "data", "video", "general",
+        })
 
     def test_unknown_text_defaults_to_general_and_normal(self):
         result = SmartTaskAnalyzer.analyze_and_classify("متابعة موضوع جديد")
@@ -46,6 +54,7 @@ class SmartTaskAnalyzerTests(unittest.TestCase):
             updated = db.get_task(task["id"])
             self.assertEqual(updated["category"], "marketing")
             self.assertEqual(updated["priority"], "urgent")
+            self.assertIsNone(updated["role_agent_key"])
             events = db.list_activity()
             self.assertTrue(any("الوكيل المتخصص المقترح: marketing" in row["action"] for row in events))
 
