@@ -529,6 +529,14 @@ def page_tasks(company: Company) -> None:
     user_name = CurrentUser.get_username()
 
     tasks = get_tasks(company.settings.db_path)
+    clients = company.db.list_clients()
+    projects = company.db.list_projects()
+    client_options = {"— بدون عميل —": None, **{
+        f"#{item['id']} — {item['name']}": item["id"] for item in clients
+    }}
+    project_options = {"— بدون مشروع —": None, **{
+        f"#{item['id']} — {item['name']}": item["id"] for item in projects
+    }}
     agents = company.db.list_agents()
     role_agents = company.db.list_role_agents()
     pipeline_names = [item["name"] for item in agents]
@@ -631,6 +639,8 @@ def page_tasks(company: Company) -> None:
             role_agent = st.selectbox(
                 "الوكيل المتخصص (اختياري — يتطلب تأكيدك)", role_options
             )
+            selected_client = st.selectbox("العميل المرتبط (اختياري)", list(client_options))
+            selected_project = st.selectbox("المشروع المرتبط (اختياري)", list(project_options))
             if st.form_submit_button("💾 إنشاء المهمة"):
                 try:
                     created = company.add_task({
@@ -638,6 +648,8 @@ def page_tasks(company: Company) -> None:
                         "category": category, "price": price,
                         "currency": company.settings.default_currency,
                         "priority": priority,
+                        "client_id": client_options[selected_client],
+                        "project_id": project_options[selected_project],
                     }, user_name=user_name)
                     if pipeline_agent != "— بدون إسناد —":
                         company.update_task(created["id"], {
@@ -692,6 +704,8 @@ def page_tasks(company: Company) -> None:
                             "price": edit_price, "currency": company.settings.default_currency,
                             "priority": edit_priority, "status": edit_status,
                             "agent": "" if edit_pipeline == "— بدون إسناد —" else edit_pipeline,
+                            "client_id": client_options[edit_client],
+                            "project_id": project_options[edit_project],
                             "user_name": user_name,
                         })
                         role_key = role_labels[edit_role]
