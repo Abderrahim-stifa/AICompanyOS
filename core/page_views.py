@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import html
 import pandas as pd
+import sqlite3
 import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
@@ -733,6 +734,15 @@ def page_settings(company: Company) -> None:
     backups = backup_mod.list_backups(s.backup_dir)
     if backups:
         st.caption(f"عدد النسخ المحفوظة: {len(backups)} — آخرها: {backups[-1].name}")
+
+    st.subheader("صيانة قاعدة البيانات")
+    st.caption("يعيد VACUUM بناء ملف SQLite ويستعيد الصفحات غير المستخدمة بعد الحذف. قد يستغرق وقتاً ويحتاج مساحة مؤقتة إضافية.")
+    if st.button("🧹 تحسين وضغط قاعدة البيانات", type="secondary", key="vacuum_database"):
+        try:
+            company.db.vacuum()
+            st.success("تم تحسين قاعدة البيانات واستعادة المساحة غير المستخدمة بنجاح.")
+        except sqlite3.OperationalError as exc:
+            st.error(f"تعذر ضغط قاعدة البيانات. قد تكون مستخدمة حالياً؛ أعد المحاولة لاحقاً. التفاصيل: {exc}")
 
     st.subheader("بيانات تجريبية")
     st.caption("تضيف 3 عملاء و3 مشاريع و3 مهام للتجربة، ولا تعمل إذا كان لديك عملاء مسبقاً.")
