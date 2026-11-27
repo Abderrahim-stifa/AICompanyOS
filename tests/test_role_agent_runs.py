@@ -126,3 +126,43 @@ if __name__ == "__main__":
         self.assertEqual(snapshots[first["id"]]["requested_by"], "planner-a")
         self.assertEqual(snapshots[second["id"]]["requested_by"], "planner-b")
         self.assertTrue(all(row["user_name"] == "task-owner" for row in events))
+
+
+    def test_failed_task_delete_rolls_back_role_run_cascade_audit(self):
+        task = self.db.add_task({
+            "title": "Task with financial and agent history",
+            "description": "Rollback verification",
+            "source": "test",
+            "category": "programming",
+            "price": 300,
+            "currency": "MAD",
+        })
+        self.db.assign_role_agent(task["id"], "engineer", "tester")
+        run = self.db.create_role_agent_run(
+            task["id"], "engineer", self.plan, requested_by="planner"
+        )
+        invoice = self.db.create_invoice(task["id"])
+        with self.db.connect() as conn:
+            conn.execute("""
+                CREATE TRIGGER fail_task_invoice_unlink
+                BEFORE UPDATE OF task_id ON invoices
+                BEGIN SELECT RAISE(ABORT, 'forced task invoice unlink failure'); END
+            """)
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.delete_task(task["id"], user_name="rollback-actor")
+
+        self.assertEqual(self.db.get_task(task["id"])["id"], task["id"])
+        self.assertEqual(self.db.list_role_agent_runs(task["id"])[0]["id"], run["id"])
+        saved_invoice = next(
+            row for row in self.db.list_invoices() if row["id"] == invoice["id"]
+        )
+        self.assertEqual(saved_invoice["task_id"], task["id"])
+        failed_actor_events = [
+            row for row in self.db.list_system_logs(limit=100)
+            if row["user_name"] == "rollback-actor"
+        ]
+        self.assertFalse(any(
+            row["action"] in {"CASCADE_DELETE", "UNLINK_TASK", "DELETE"}
+            for row in failed_actor_events
+        ))
