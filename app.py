@@ -8,6 +8,7 @@ import html
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 
 from core import agents as agents_mod
 from core.auth_context import CurrentUser
@@ -16,6 +17,7 @@ from core import backup as backup_mod
 from core import ai_agents as role_agents
 from core.agent_center import build_agent_overview
 from core.smart_agent import SmartTaskAnalyzer
+from core.invoice import generate_invoice_html
 from core.init_db import list_role_agents, load_ui_settings, save_ui_settings
 from core.service import Company
 from core.ui_helpers import notify_and_refresh
