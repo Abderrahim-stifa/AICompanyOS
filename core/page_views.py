@@ -561,6 +561,8 @@ def page_tasks(company: Company) -> None:
         if status_filter == "الكل" or item["status"] == status_filter
     ]
     role_agent_names = {item["agent_key"]: item["role"] for item in role_agents}
+    client_names = {item["id"]: item["name"] for item in clients}
+    project_names = {item["id"]: item["name"] for item in projects}
     task_rows = []
     for item in visible_tasks:
         row = dict(item)
@@ -573,13 +575,17 @@ def page_tasks(company: Company) -> None:
         row["role_agent_key"] = role_agent_names.get(
             item.get("role_agent_key"), item.get("role_agent_key") or "—"
         )
+        row["client_name"] = client_names.get(item.get("client_id"), "—")
+        row["project_name"] = project_names.get(item.get("project_id"), "—")
         task_rows.append(row)
     st.caption("اقتراح الوكيل المتخصص ناتج عن تحليل محلي للكلمات المفتاحية؛ لا يتم الإسناد تلقائياً. أكد الإسناد من تبويب تعديل / إسناد.")
     table(task_rows, {
         "id": "الرقم", "title": "المهمة", "description": "الوصف",
         "priority": "الأولوية", "status": "الحالة", "agent": "وكيل Pipeline",
         "suggested_role_agent": "اقتراح الوكيل المتخصص",
-        "role_agent_key": "الوكيل المتخصص المعيّن", "created_at": "تاريخ الإنشاء",
+        "role_agent_key": "الوكيل المتخصص المعيّن",
+        "client_name": "العميل", "project_name": "المشروع",
+        "created_at": "تاريخ الإنشاء",
     }, {"status": TASK_AR, "agent": AGENT_AR})
 
     tab_create, tab_update, tab_delete = st.tabs(["إضافة مهمة", "تعديل / إسناد", "حذف مهمة"])
