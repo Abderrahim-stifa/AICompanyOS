@@ -90,6 +90,19 @@ class Company:
             user_name=clean_text(user_name, "user_name", max_len=100),
         )
 
+    def update_ledger(self, entry_id, data: dict, user_name: str = "system") -> dict:
+        return self.db.update_ledger_entry(
+            clean_id(entry_id, "ledger entry id"),
+            validate_ledger_entry(data, self.settings.default_currency),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
+    def delete_ledger(self, entry_id, user_name: str = "system") -> None:
+        self.db.delete_ledger_entry(
+            clean_id(entry_id, "ledger entry id"),
+            user_name=clean_text(user_name, "user_name", max_len=100),
+        )
+
     # clients
     def add_client(self, data: dict, user_name: str = "system") -> dict:
         return self.db.add_client(
