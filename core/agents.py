@@ -79,7 +79,9 @@ def run_classifier(db: Database) -> list[dict]:
             )
             msg = (
                 f"صُنّفت المهمة: {category}؛ الأولوية: {priority}؛ "
-                f"الوكيل المقترح: {analysis['suggested_agent']}"
+                f"وكيل Pipeline المقترح: {analysis['suggested_agent']}؛ "
+                f"الوكيل المتخصص المقترح: {analysis['suggested_role_agent']} "
+                f"(لا يتم الإسناد تلقائياً)"
             )
         db.add_activity("classifier", msg, task["id"])
         actions.append({"agent": "classifier", "task_id": task["id"], "action": msg})
