@@ -902,14 +902,14 @@ class Database:
             if row is None:
                 raise LookupError(f"invoice #{invoice_id} not found")
             old = dict(row)
-            if old["status"] not in {"draft", "issued", "overdue"}:
-                raise ValueError("only unpaid draft or issued invoices can be voided")
             paid = conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE invoice_id = ?",
                 (invoice_id,),
             ).fetchone()["total"]
             if float(paid) > 0:
                 raise ValueError("invoice with recorded payments cannot be voided; refund payments first")
+            if old["status"] not in {"draft", "issued", "overdue"}:
+                raise ValueError("only unpaid draft or issued invoices can be voided")
             now = _now()
             conn.execute(
                 "UPDATE invoices SET status = 'void', notes = ?, updated_at = ? WHERE id = ?",
