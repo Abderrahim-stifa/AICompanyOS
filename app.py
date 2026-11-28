@@ -1,4 +1,4 @@
-"""AICompanyOS — lightweight authenticated Streamlit multipage entrypoint."""
+""""AICompanyOS — lightweight authenticated Streamlit multipage entrypoint."""
 from __future__ import annotations
 
 import streamlit as st
@@ -121,8 +121,11 @@ with st.sidebar:
         logout()
         st.rerun()
     st.markdown(
-        "<div style='text-align:center; margin-top:50px; color:#64748b; "
-        "font-size:12px'>v0.5.0 Ultra-Fast</div>",
+        "<div style='text-align:center; margin-top:34px; color:#94a3b8; "
+        "font-size:12px; line-height:1.8'>"
+        "AICompanyOS · v0.5.0 Ultra-Fast<br>"
+        "© 2026 Abderrahim Stifa<br>"
+        "All rights reserved.</div>",
         unsafe_allow_html=True,
     )
 
