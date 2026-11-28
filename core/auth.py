@@ -93,6 +93,18 @@ def logout() -> None:
     st.session_state.pop("username", None)
 
 
+
+def _render_copyright_footer() -> None:
+    """Render the author attribution at the bottom of the login screen."""
+    st.markdown(
+        "<div style='text-align:center; margin:38px auto 18px; padding:14px 8px; "
+        "border-top:1px solid rgba(148,163,184,.25); color:#94a3b8; "
+        "font-size:12px; line-height:1.9'>"
+        "AICompanyOS · © 2026 Abderrahim Stifa<br>"
+        "All rights reserved.</div>",
+        unsafe_allow_html=True,
+    )
+
 def show_login() -> bool:
     """Render the login screen and return True only for authenticated sessions."""
     if is_authenticated():
@@ -115,6 +127,7 @@ def show_login() -> bool:
             "AICOS_AUTH_PASSWORD في متغيرات البيئة، أو أضفهما إلى "
             "Streamlit secrets داخل القسم [auth]."
         )
+        _render_copyright_footer()
         return False
 
     locked_for = login_lockout_remaining()
@@ -123,6 +136,7 @@ def show_login() -> bool:
             f"تم إيقاف تسجيل الدخول مؤقتاً بسبب محاولات فاشلة متكررة. "
             f"حاول مجدداً بعد {locked_for} ثانية."
         )
+        _render_copyright_footer()
         return False
 
     with st.form("aicos_login"):
@@ -139,6 +153,7 @@ def show_login() -> bool:
         else:
             st.error("اسم المستخدم أو كلمة المرور غير صحيحة.")
 
+    _render_copyright_footer()
     return False
 
 
