@@ -131,6 +131,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Run Unit Tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run Pytest Service Tests
+        run: python -m pytest -q
+
+      - name: Verify Installed Dependencies
+        run: python -m pip check
+
       - name: Publish Refreshed Screenshots to Repository
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: |
@@ -143,15 +152,6 @@ jobs:
             git commit -m "docs: refresh application screenshots [skip ci]"
             git push
           fi
-
-      - name: Run Unit Tests
-        run: python -m unittest discover -s tests -v
-
-      - name: Run Pytest Service Tests
-        run: python -m pytest -q
-
-      - name: Verify Installed Dependencies
-        run: python -m pip check
 
       - name: Success
         run: |
