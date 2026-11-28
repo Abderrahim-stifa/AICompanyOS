@@ -11,8 +11,16 @@ import os
 
 import streamlit as st
 
+from core.login_throttle import from_env as _throttle_from_env
+
 _AUTHENTICATED_KEY = "aicos_authenticated"
 _AUTH_USERNAME_KEY = "aicos_authenticated_username"
+_THROTTLE = _throttle_from_env()
+
+
+def login_lockout_remaining() -> int:
+    """Seconds left before login attempts are accepted again (0 = not locked)."""
+    return _THROTTLE.retry_after()
 
 
 def _configured_credentials() -> tuple[str, str]:
@@ -52,6 +60,8 @@ def authenticate(username: str, password: str) -> bool:
     expected_username, expected_password = _configured_credentials()
     if not expected_username or not expected_password:
         return False
+    if _THROTTLE.retry_after():
+        return False
 
     username_ok = hmac.compare_digest(
         str(username).strip().encode("utf-8"),
@@ -62,11 +72,13 @@ def authenticate(username: str, password: str) -> bool:
         expected_password.encode("utf-8"),
     )
     if username_ok and password_ok:
+        _THROTTLE.record_success()
         st.session_state[_AUTHENTICATED_KEY] = True
         st.session_state[_AUTH_USERNAME_KEY] = expected_username
         st.session_state["username"] = expected_username
         return True
 
+    _THROTTLE.record_failure()
     return False
 
 
@@ -101,6 +113,14 @@ def show_login() -> bool:
         )
         return False
 
+    locked_for = login_lockout_remaining()
+    if locked_for:
+        st.error(
+            f"تم إيقاف تسجيل الدخول مؤقتاً بسبب محاولات فاشلة متكررة. "
+            f"حاول مجدداً بعد {locked_for} ثانية."
+        )
+        return False
+
     with st.form("aicos_login"):
         st.subheader("تسجيل الدخول")
         username = st.text_input("اسم المستخدم")
@@ -109,6 +129,8 @@ def show_login() -> bool:
 
     if submitted:
         if authenticate(username, password):
+            st.rerun()
+        elif login_lockout_remaining():
             st.rerun()
         else:
             st.error("اسم المستخدم أو كلمة المرور غير صحيحة.")
