@@ -125,6 +125,19 @@ def make_handler(company: Company):
                     )
                 if path == "/summary" and method == "GET":
                     return self._send(200, company.db.summary())
+                # Read-only access to the business records.
+                if path == "/clients" and method == "GET":
+                    return self._send(200, company.db.list_clients())
+                if path == "/projects" and method == "GET":
+                    return self._send(200, company.db.list_projects())
+                if path == "/invoices" and method == "GET":
+                    return self._send(200, company.db.list_invoices())
+                if path == "/payments" and method == "GET":
+                    raw_invoice = (query.get("invoice_id") or [None])[0]
+                    if raw_invoice is not None and not raw_invoice.isdigit():
+                        raise ValidationError("invoice_id must be a positive integer")
+                    invoice_id = int(raw_invoice) if raw_invoice is not None else None
+                    return self._send(200, company.db.list_payments(invoice_id))
                 self._send(404, {"error": "not found"})
             except ValidationError as exc:
                 self._send(400, {"error": str(exc)})

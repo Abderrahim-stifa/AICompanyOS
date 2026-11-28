@@ -99,3 +99,35 @@ def test_cli_status_update_uses_cli_audit_actor(monkeypatch):
     company.update_task.assert_called_once_with(
         "7", {"status": "done"}, user_name="cli"
     )
+
+
+def test_api_lists_business_records_read_only():
+    for path, method_name in (
+        ("/clients", "list_clients"),
+        ("/projects", "list_projects"),
+        ("/invoices", "list_invoices"),
+    ):
+        response, company = _route("GET", path)
+        assert response["code"] == 200
+        getattr(company.db, method_name).assert_called_once_with()
+
+
+def test_api_payments_filter_by_invoice_id():
+    response, company = _route("GET", "/payments?invoice_id=12")
+    assert response["code"] == 200
+    company.db.list_payments.assert_called_once_with(12)
+    response, company = _route("GET", "/payments")
+    company.db.list_payments.assert_called_once_with(None)
+
+
+def test_api_payments_rejects_non_numeric_invoice_id():
+    response, company = _route("GET", "/payments?invoice_id=abc")
+    assert response["code"] == 400
+    company.db.list_payments.assert_not_called()
+
+
+def test_api_business_records_have_no_write_routes():
+    response, _ = _route(
+        "POST", "/invoices", content_type="application/json", body={}
+    )
+    assert response["code"] == 404
