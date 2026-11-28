@@ -1,4 +1,4 @@
-""""AICompanyOS — lightweight authenticated Streamlit multipage entrypoint."""
+"""AICompanyOS — lightweight authenticated Streamlit multipage entrypoint."""
 from __future__ import annotations
 
 import streamlit as st
@@ -130,3 +130,13 @@ with st.sidebar:
     )
 
 navigation.run()
+
+# 5. Main-page copyright footer, rendered after the selected page content.
+st.markdown(
+    "<div style='text-align:center; margin-top:42px; padding:16px 8px; "
+    "border-top:1px solid rgba(148,163,184,.25); color:#94a3b8; "
+    "font-size:12px; line-height:1.9'>"
+    "AICompanyOS · © 2026 Abderrahim Stifa<br>"
+    "All rights reserved.</div>",
+    unsafe_allow_html=True,
+)
