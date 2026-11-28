@@ -198,4 +198,6 @@ python -m pytest
 
 **AICompanyOS — Build your company, locally.**
 
+© 2026 Abderrahim Stifa · All rights reserved.
+
 </div>
