@@ -25,6 +25,21 @@ AICompanyOS تطبيق محلي لإدارة عمليات شركة صغيرة م
 
 المشروع يعمل محلياً ولا يحتاج إلى مفتاح API لتشغيل الوظائف الحالية. لا يعني ذلك أن الوكلاء الحاليين نماذج ذكاء اصطناعي توليدية؛ تفاصيل ذلك موضحة أدناه.
 
+## لقطات من الواجهة
+
+تُلتقط هذه الصور آلياً من نسخة اختبارية للتطبيق باستخدام بيانات تجريبية اصطناعية، وتُحدّث في المستودع بعد نجاح فحوصات CI عند كل تحديث لفرع `main`.
+
+<div align="center">
+  <img src="docs/screenshots/dashboard.png" alt="لوحة التحكم في AICompanyOS" width="100%">
+  <p><strong>لوحة التحكم</strong></p>
+  <img src="docs/screenshots/tasks.png" alt="صفحة إدارة المهام" width="100%">
+  <p><strong>إدارة المهام</strong></p>
+  <img src="docs/screenshots/clients.png" alt="صفحة العملاء" width="100%">
+  <p><strong>إدارة العملاء</strong></p>
+  <img src="docs/screenshots/projects.png" alt="صفحة المشاريع" width="100%">
+  <p><strong>إدارة المشاريع</strong></p>
+</div>
+
 ## المزايا الحالية
 
 - لوحة تحكم وصفحات مستقلة عبر Streamlit navigation.
