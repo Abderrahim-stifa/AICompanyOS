@@ -41,6 +41,22 @@ def test_authentication_fails_closed_without_configuration(monkeypatch):
     assert auth.is_authenticated() is False
 
 
+def test_missing_streamlit_secrets_file_fails_closed_without_crashing(monkeypatch):
+    class MissingSecrets:
+        def get(self, *_args, **_kwargs):
+            raise FileNotFoundError("No secrets.toml found")
+
+    state = {}
+    monkeypatch.setattr(auth.st, "session_state", state)
+    monkeypatch.setattr(auth.st, "secrets", MissingSecrets())
+    monkeypatch.delenv("AICOS_AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("AICOS_AUTH_PASSWORD", raising=False)
+
+    assert auth._configured_credentials() == ("", "")
+    assert auth.authenticate("operator", "anything") is False
+    assert auth.is_authenticated() is False
+
+
 def test_logout_clears_session_identity(monkeypatch):
     state = {
         auth._AUTHENTICATED_KEY: True,
