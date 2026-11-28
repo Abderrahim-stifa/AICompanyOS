@@ -3,4 +3,4 @@ base = "dark"
 primaryColor = "#ff4d86"
 
 [server]
-headless = false
+headless = true
