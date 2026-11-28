@@ -35,7 +35,11 @@ def _configured_credentials() -> tuple[str, str]:
         auth_secrets = st.secrets.get("auth", {})
         username = str(auth_secrets.get("username", "")).strip()
         password = str(auth_secrets.get("password", ""))
-    except (AttributeError, KeyError, RuntimeError):
+    except (AttributeError, KeyError, RuntimeError, FileNotFoundError):
+        # Streamlit Cloud raises StreamlitSecretNotFoundError (a
+        # FileNotFoundError subclass) when no secrets.toml is configured.
+        # Treat missing secrets as unconfigured credentials so the login page
+        # can render its setup message instead of crashing the whole app.
         return "", ""
 
     return username, password
